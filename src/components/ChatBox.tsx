@@ -5,6 +5,7 @@ import {
   User,
   onAuthStateChanged,
   signInWithPopup,
+  signInWithRedirect,
   signOut,
 } from "firebase/auth";
 import { FirebaseError } from "firebase/app";
@@ -117,14 +118,14 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const canSend = Boolean(user) && isBreakPhase && draft.trim().length > 0;
+  const canSend = Boolean(user) && draft.trim().length > 0;
 
   const statusText = useMemo(() => {
-    if (!isBreakPhase) {
-      return "Sohbet, sadece dinlenme modunda mesaj göndermeye açık.";
-    }
     if (!user) {
       return "Mesaj göndermek için Google ile giriş yap.";
+    }
+    if (!isBreakPhase) {
+      return "Sohbet açık. Şu an odak modundasın, istersen yine mesaj yazabilirsin.";
     }
     return "Tek oda aktif. Kısa ve sakin mesajlar bırak.";
   }, [isBreakPhase, user]);
@@ -182,6 +183,19 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
       await signInWithPopup(auth, googleProvider);
     } catch (reason) {
       const code = reason instanceof FirebaseError ? reason.code : "unknown";
+      if (
+        code === "auth/popup-blocked" ||
+        code === "auth/popup-closed-by-user" ||
+        code === "auth/operation-not-supported-in-this-environment"
+      ) {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+          return;
+        } catch {
+          setError("Google girişinde popup ve redirect denemesi başarısız oldu.");
+          return;
+        }
+      }
       setError(`Google girişi başarısız (${code}).`);
     } finally {
       setIsSigningIn(false);
@@ -199,7 +213,7 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!db || !user || !isBreakPhase) {
+    if (!db || !user) {
       return;
     }
 
@@ -324,14 +338,10 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
       <form className="chat-form" onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder={
-            isBreakPhase
-              ? "Dinlenme notun..."
-              : "Odak modunda yazım kapalı, dinlenmede açılır"
-          }
+          placeholder="Mesajını yaz..."
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          disabled={!user || !isBreakPhase}
+          disabled={!user}
           maxLength={240}
         />
         <button type="submit" className="secondary-btn" disabled={!canSend}>

@@ -95,8 +95,7 @@ export default function Home() {
         {activeTab === "pomodoro" ? (
           <>
             <article className="chat-banner">
-              Sohbet burada görünür. Mesaj göndermek için dinlenme moduna (5
-              dk) geçmen gerekir.
+              Sohbet tek odada aktif. Odak veya dinlenme modunda yazabilirsin.
             </article>
             <div className="pomodoro-grid">
               <PomodoroTimer onPhaseChange={setPhase} />
