@@ -171,65 +171,67 @@ export function AudioPlayer() {
 
   return (
     <aside className="audio-dock" aria-label="Müzik oynatıcı">
-      <article className="soft-card audio-dock-card">
-        <div className="audio-shell">
-          <div className="audio-header">
-            <h2>Loop Müzik</h2>
-            <p className="audio-summary">Sayfada gezerken müzik kesilmez.</p>
-            <p className="meta-line audio-track-indicator">
-              Parça {activeTrackIndex + 1} / {audioTracks.length}
-            </p>
-          </div>
+      <article className="audio-dock-card">
+        <div className="audio-controls-only" role="group" aria-label="Müzik kontrolleri">
+          <button
+            type="button"
+            className="audio-icon-btn"
+            aria-label="Önceki parça"
+            title="Önceki parça"
+            onClick={() => goToTrackByOffset(-1)}
+          >
+            ⏮
+          </button>
 
-          <div className="audio-nav" role="group" aria-label="Müzik navigasyonu">
-            <button
-              type="button"
-              className="audio-nav-btn"
-              onClick={() => goToTrackByOffset(-1)}
-            >
-              Geri
-            </button>
+          <button
+            type="button"
+            className="audio-icon-btn audio-icon-main"
+            aria-label={enabled ? "Durdur" : "Çal"}
+            title={enabled ? "Durdur" : "Çal"}
+            onClick={handleToggle}
+          >
+            {enabled ? "⏸" : "▶"}
+          </button>
 
-            <button
-              type="button"
-              className="audio-nav-btn audio-nav-main"
-              onClick={handleToggle}
-            >
-              {enabled ? "Durdur" : "Çal"}
-            </button>
+          <button
+            type="button"
+            className="audio-icon-btn"
+            aria-label="Sonraki parça"
+            title="Sonraki parça"
+            onClick={() => goToTrackByOffset(1)}
+          >
+            ⏭
+          </button>
 
-            <button
-              type="button"
-              className="audio-nav-btn"
-              onClick={() => goToTrackByOffset(1)}
-            >
-              İleri
-            </button>
+          <button
+            type="button"
+            className="audio-icon-btn"
+            aria-label="Sesi azalt"
+            title="Sesi azalt"
+            onClick={() => adjustVolume(-0.12)}
+          >
+            🔉
+          </button>
 
-            <button
-              type="button"
-              className="audio-nav-btn"
-              onClick={() => adjustVolume(-0.12)}
-            >
-              Ses -
-            </button>
+          <button
+            type="button"
+            className="audio-icon-btn"
+            aria-label={volume === 0 ? "Sesi aç" : "Sesi kapat"}
+            title={volume === 0 ? "Sesi aç" : "Sesi kapat"}
+            onClick={handleMuteToggle}
+          >
+            {volume === 0 ? "🔇" : "🔈"}
+          </button>
 
-            <button type="button" className="audio-nav-btn" onClick={handleMuteToggle}>
-              {volume === 0 ? "Sesi Aç" : "Sessiz"}
-            </button>
-
-            <button
-              type="button"
-              className="audio-nav-btn"
-              onClick={() => adjustVolume(0.12)}
-            >
-              Ses +
-            </button>
-          </div>
-
-          <div className="audio-level-bar" aria-hidden="true">
-            <span style={{ width: `${Math.round(volume * 100)}%` }} />
-          </div>
+          <button
+            type="button"
+            className="audio-icon-btn"
+            aria-label="Sesi artır"
+            title="Sesi artır"
+            onClick={() => adjustVolume(0.12)}
+          >
+            🔊
+          </button>
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}

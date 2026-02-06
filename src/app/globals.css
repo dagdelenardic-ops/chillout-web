@@ -41,7 +41,7 @@ a {
 .page-shell {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 30px 20px 190px;
+  padding: 30px 20px 140px;
   display: grid;
   gap: 18px;
   position: relative;
@@ -54,96 +54,63 @@ a {
   left: 50%;
   bottom: max(12px, env(safe-area-inset-bottom));
   transform: translateX(-50%);
-  width: min(1140px, calc(100vw - 22px));
+  width: fit-content;
+  max-width: calc(100vw - 16px);
   z-index: 30;
 }
 
 .audio-dock-card {
-  border-radius: 24px;
-  padding: 12px 14px;
+  border-radius: 999px;
+  padding: 8px;
   background: linear-gradient(
     120deg,
-    rgba(10, 20, 26, 0.72),
-    rgba(16, 28, 36, 0.58)
+    rgba(10, 20, 26, 0.62),
+    rgba(16, 28, 36, 0.48)
   );
   border: 1px solid rgba(182, 227, 216, 0.28);
-  box-shadow: 0 16px 28px rgba(3, 8, 12, 0.35);
+  box-shadow: 0 12px 24px rgba(3, 8, 12, 0.3);
   backdrop-filter: blur(16px);
+  width: fit-content;
 }
 
-.audio-dock-card h2 {
-  margin: 0;
-  font-size: 0.98rem;
-}
-
-.audio-dock-card .audio-summary {
-  margin: 0;
-  font-size: 0.84rem;
-  color: var(--ink-muted);
-}
-
-.audio-shell {
-  display: grid;
-  gap: 10px;
-}
-
-.audio-header {
-  display: grid;
-  gap: 3px;
-}
-
-.audio-track-indicator {
-  font-size: 0.8rem;
-}
-
-.audio-nav {
+.audio-controls-only {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
 }
 
-.audio-nav-btn {
+.audio-icon-btn {
+  width: 38px;
+  height: 38px;
   border-radius: 999px;
-  border: 1px solid rgba(182, 227, 216, 0.3);
-  background: rgba(10, 20, 26, 0.72);
+  border: 1px solid rgba(182, 227, 216, 0.32);
+  background: rgba(10, 20, 26, 0.65);
   color: #e9f7f2;
-  padding: 8px 12px;
-  font-size: 0.84rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
   line-height: 1;
-  font-weight: 600;
   cursor: pointer;
-  transition: border-color 160ms ease, background-color 160ms ease, transform 160ms ease;
+  transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease;
 }
 
-.audio-nav-btn:hover {
+.audio-icon-btn:hover {
   transform: translateY(-1px);
   border-color: rgba(109, 240, 194, 0.52);
 }
 
-.audio-nav-main {
+.audio-icon-main {
+  width: 42px;
+  height: 42px;
+  font-size: 1.05rem;
+  border-color: transparent;
   background: linear-gradient(
     100deg,
-    rgba(109, 240, 194, 0.96),
-    rgba(255, 211, 115, 0.96)
+    rgba(109, 240, 194, 0.95),
+    rgba(255, 211, 115, 0.95)
   );
   color: #032b25;
-  border-color: transparent;
-}
-
-.audio-level-bar {
-  height: 5px;
-  width: 100%;
-  border-radius: 999px;
-  background: rgba(182, 227, 216, 0.17);
-  overflow: hidden;
-}
-
-.audio-level-bar span {
-  display: block;
-  height: 100%;
-  border-radius: inherit;
-  background: linear-gradient(90deg, var(--accent-mint), var(--accent-sun));
-  transition: width 180ms ease;
 }
 
 .hero {
@@ -548,7 +515,7 @@ label {
 
 @media (max-width: 960px) {
   .page-shell {
-    padding: 18px 12px 200px;
+    padding: 18px 12px 150px;
     gap: 14px;
   }
 
@@ -583,19 +550,17 @@ label {
   }
 
   .audio-dock {
-    width: calc(100vw - 12px);
+    max-width: calc(100vw - 10px);
     bottom: max(6px, env(safe-area-inset-bottom));
   }
 
   .audio-dock-card {
-    padding: 11px 11px;
-    border-radius: 20px;
+    padding: 7px;
+    border-radius: 999px;
   }
 
-  .audio-nav-btn {
-    flex: 1 1 calc(33.333% - 8px);
-    justify-content: center;
-    min-width: 0;
+  .audio-controls-only {
+    gap: 6px;
   }
 
   .chat-list {
@@ -618,17 +583,16 @@ label {
     font-size: 0.86rem;
   }
 
-  .audio-dock-card h2 {
-    font-size: 0.9rem;
+  .audio-icon-btn {
+    width: 34px;
+    height: 34px;
+    font-size: 0.92rem;
   }
 
-  .audio-dock-card .audio-summary {
-    font-size: 0.78rem;
-  }
-
-  .audio-nav-btn {
-    font-size: 0.78rem;
-    padding: 8px 10px;
+  .audio-icon-main {
+    width: 38px;
+    height: 38px;
+    font-size: 0.96rem;
   }
 
   .roll-grid {
