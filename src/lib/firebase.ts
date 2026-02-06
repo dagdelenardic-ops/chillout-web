@@ -168,13 +168,6 @@ function selectResolvedConfig(
     };
   }
 
-  if (isCompleteFirebaseConfig(bundledFirebaseConfig)) {
-    return {
-      config: bundledFirebaseConfig,
-      source: "bundled",
-    };
-  }
-
   if (isCompleteFirebaseConfig(envFirebaseConfig)) {
     return {
       config: envFirebaseConfig,
@@ -187,6 +180,13 @@ function selectResolvedConfig(
     return {
       config: runtime,
       source: "runtime",
+    };
+  }
+
+  if (isCompleteFirebaseConfig(bundledFirebaseConfig)) {
+    return {
+      config: bundledFirebaseConfig,
+      source: "bundled",
     };
   }
 
