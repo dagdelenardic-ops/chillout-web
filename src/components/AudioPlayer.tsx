@@ -1,7 +1,16 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronUp,
+  Music2,
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume2,
+} from "lucide-react";
 import { AudioTrack, audioTracks } from "@/data/audioTracks";
 
 const AUDIO_STATE_KEY = "chillout_audio_state_v1";
@@ -66,6 +75,8 @@ export function AudioPlayer() {
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
   const [trackId, setTrackId] = useState(() => readStoredAudioState().trackId);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+  const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const activeTrack = useMemo(
@@ -193,61 +204,87 @@ export function AudioPlayer() {
 
   return (
     <aside className="audio-dock" aria-label="Müzik oynatıcı">
-      <article className="audio-dock-card">
-        <div className="audio-controls-only" role="group" aria-label="Müzik kontrolleri">
-          <button
-            type="button"
-            className="audio-icon-btn"
-            aria-label="Önceki parça"
-            title="Önceki parça"
-            onClick={() => goToTrackByOffset(-1)}
-          >
-            <SkipBack aria-hidden="true" />
-          </button>
+      <button
+        type="button"
+        className="audio-panel-toggle"
+        aria-expanded={isPanelOpen}
+        onClick={() => setIsPanelOpen((prev) => !prev)}
+      >
+        <Music2 aria-hidden="true" />
+        <span>{isPanelOpen ? "Paneli Kapat" : "Müzik Paneli Aç"}</span>
+        {isPanelOpen ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
+      </button>
 
-          <button
-            type="button"
-            className="audio-icon-btn audio-icon-main"
-            aria-label={enabled ? "Durdur" : "Çal"}
-            title={enabled ? "Durdur" : "Çal"}
-            onClick={handleToggle}
-          >
-            {enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-          </button>
+      {isPanelOpen ? (
+        <article className="audio-dock-card">
+          <div className="audio-controls-only" role="group" aria-label="Müzik kontrolleri">
+            <button
+              type="button"
+              className="audio-icon-btn"
+              aria-label="Önceki parça"
+              title="Önceki parça"
+              onClick={() => goToTrackByOffset(-1)}
+            >
+              <SkipBack aria-hidden="true" />
+            </button>
 
-          <button
-            type="button"
-            className="audio-icon-btn"
-            aria-label="Sonraki parça"
-            title="Sonraki parça"
-            onClick={() => goToTrackByOffset(1)}
-          >
-            <SkipForward aria-hidden="true" />
-          </button>
+            <button
+              type="button"
+              className="audio-icon-btn audio-icon-main"
+              aria-label={enabled ? "Durdur" : "Çal"}
+              title={enabled ? "Durdur" : "Çal"}
+              onClick={handleToggle}
+            >
+              {enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+            </button>
 
-          <label className="audio-intensity" htmlFor="audio-volume-slider">
-            <span className="sr-only">Müzik şiddeti</span>
-            <input
-              id="audio-volume-slider"
-              className="audio-intensity-slider"
-              type="range"
-              min={0}
-              max={1}
-              step={0.01}
-              value={volume}
-              onChange={(event) => setVolume(clampVolume(Number(event.target.value)))}
-            />
-          </label>
-        </div>
+            <button
+              type="button"
+              className="audio-icon-btn"
+              aria-label="Sonraki parça"
+              title="Sonraki parça"
+              onClick={() => goToTrackByOffset(1)}
+            >
+              <SkipForward aria-hidden="true" />
+            </button>
 
-        {error ? <p className="error-text">{error}</p> : null}
+            <button
+              type="button"
+              className={`audio-icon-btn ${isVolumeOpen ? "active" : ""}`}
+              aria-expanded={isVolumeOpen}
+              aria-label={isVolumeOpen ? "Ses çubuğunu kapat" : "Ses çubuğunu aç"}
+              title={isVolumeOpen ? "Ses çubuğunu kapat" : "Ses çubuğunu aç"}
+              onClick={() => setIsVolumeOpen((prev) => !prev)}
+            >
+              <Volume2 aria-hidden="true" />
+            </button>
 
-        <audio
-          ref={audioRef}
-          preload="none"
-          onError={() => setError("Müzik dosyası bulunamadı. İsimleri kontrol et.")}
-        />
-      </article>
+            {isVolumeOpen ? (
+              <label className="audio-intensity" htmlFor="audio-volume-slider">
+                <span className="sr-only">Müzik şiddeti</span>
+                <input
+                  id="audio-volume-slider"
+                  className="audio-intensity-slider"
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={volume}
+                  onChange={(event) => setVolume(clampVolume(Number(event.target.value)))}
+                />
+              </label>
+            ) : null}
+          </div>
+
+          {error ? <p className="error-text">{error}</p> : null}
+        </article>
+      ) : null}
+
+      <audio
+        ref={audioRef}
+        preload="none"
+        onError={() => setError("Müzik dosyası bulunamadı. İsimleri kontrol et.")}
+      />
     </aside>
   );
 }

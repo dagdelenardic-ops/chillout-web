@@ -53,7 +53,7 @@ a {
 .page-shell {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 30px 20px 140px;
+  padding: 30px 20px 84px;
   display: grid;
   gap: 18px;
   position: relative;
@@ -63,12 +63,40 @@ a {
 
 .audio-dock {
   position: fixed;
-  left: 50%;
+  right: 12px;
   bottom: max(12px, env(safe-area-inset-bottom));
-  transform: translateX(-50%);
   width: fit-content;
-  max-width: calc(100vw - 16px);
+  max-width: calc(100vw - 20px);
   z-index: 30;
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+}
+
+.audio-panel-toggle {
+  border-radius: 999px;
+  border: 1px solid rgba(182, 227, 216, 0.34);
+  background: rgba(10, 20, 26, 0.72);
+  color: #e8f7f2;
+  height: 36px;
+  padding: 0 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+
+.audio-panel-toggle svg {
+  width: 14px;
+  height: 14px;
+  stroke-width: 2.2;
+}
+
+.audio-panel-toggle:hover {
+  border-color: rgba(109, 240, 194, 0.52);
 }
 
 .audio-dock-card {
@@ -110,6 +138,11 @@ a {
   width: 17px;
   height: 17px;
   stroke-width: 2.1;
+}
+
+.audio-icon-btn.active {
+  border-color: rgba(109, 240, 194, 0.65);
+  background: rgba(18, 35, 45, 0.86);
 }
 
 .audio-icon-btn:hover {
@@ -555,7 +588,7 @@ label {
 
 @media (max-width: 960px) {
   .page-shell {
-    padding: 18px 12px 150px;
+    padding: 18px 12px 92px;
     gap: 14px;
   }
 
@@ -590,7 +623,8 @@ label {
   }
 
   .audio-dock {
-    max-width: calc(100vw - 10px);
+    right: 8px;
+    max-width: calc(100vw - 12px);
     bottom: max(6px, env(safe-area-inset-bottom));
   }
 
@@ -601,6 +635,12 @@ label {
 
   .audio-controls-only {
     gap: 6px;
+  }
+
+  .audio-panel-toggle {
+    height: 34px;
+    font-size: 0.74rem;
+    padding: 0 10px;
   }
 
   .audio-intensity {
