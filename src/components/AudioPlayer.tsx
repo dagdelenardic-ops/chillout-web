@@ -1,16 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import {
-  Pause,
-  Play,
-  SkipBack,
-  SkipForward,
-  Volume1,
-  Volume2,
-  VolumeX,
-} from "lucide-react";
-import { audioTracks } from "@/data/audioTracks";
+import { Pause, Play, SkipBack, SkipForward } from "lucide-react";
+import { AudioTrack, audioTracks } from "@/data/audioTracks";
 
 const AUDIO_STATE_KEY = "chillout_audio_state_v1";
 
@@ -70,20 +62,59 @@ function readStoredAudioState(): StoredAudioState {
 
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const lastNonZeroVolumeRef = useRef(DEFAULT_AUDIO_STATE.volume);
+  const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
   const [trackId, setTrackId] = useState(() => readStoredAudioState().trackId);
   const [error, setError] = useState<string | null>(null);
 
   const activeTrack = useMemo(
-    () => audioTracks.find((track) => track.id === trackId) ?? audioTracks[0],
-    [trackId]
+    () => tracks.find((track) => track.id === trackId) ?? tracks[0],
+    [trackId, tracks]
   );
   const activeTrackIndex = useMemo(
-    () => Math.max(0, audioTracks.findIndex((track) => track.id === activeTrack?.id)),
-    [activeTrack]
+    () => Math.max(0, tracks.findIndex((track) => track.id === activeTrack?.id)),
+    [activeTrack, tracks]
   );
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const loadTracks = async () => {
+      try {
+        const response = await fetch("/api/music", { cache: "no-store" });
+        if (!response.ok) {
+          return;
+        }
+        const data = (await response.json()) as { tracks?: string[] };
+        const paths = Array.isArray(data.tracks) ? data.tracks : [];
+        if (paths.length === 0 || !isMounted) {
+          return;
+        }
+
+        const nextTracks: AudioTrack[] = paths.map((filePath) => ({
+          id: filePath,
+          title: filePath,
+          file: filePath,
+        }));
+
+        setTracks(nextTracks);
+        setTrackId((prev) =>
+          nextTracks.some((track) => track.id === prev)
+            ? prev
+            : (nextTracks[0]?.id ?? "")
+        );
+      } catch {
+        // Keep fallback list when endpoint is unavailable.
+      }
+    };
+
+    loadTracks();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -93,10 +124,10 @@ export function AudioPlayer() {
     const payload: StoredAudioState = {
       enabled,
       volume,
-      trackId,
+      trackId: activeTrack?.id ?? trackId,
     };
     window.localStorage.setItem(AUDIO_STATE_KEY, JSON.stringify(payload));
-  }, [enabled, trackId, volume]);
+  }, [activeTrack, enabled, trackId, volume]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -127,34 +158,16 @@ export function AudioPlayer() {
     audio.volume = volume;
   }, [volume]);
 
-  useEffect(() => {
-    if (volume > 0) {
-      lastNonZeroVolumeRef.current = volume;
-    }
-  }, [volume]);
-
   const goToTrackByOffset = (offset: number) => {
-    if (audioTracks.length < 2) {
+    if (tracks.length < 2) {
       return;
     }
     const nextIndex =
-      (activeTrackIndex + offset + audioTracks.length) % audioTracks.length;
-    const nextTrack = audioTracks[nextIndex];
+      (activeTrackIndex + offset + tracks.length) % tracks.length;
+    const nextTrack = tracks[nextIndex];
     if (nextTrack) {
       setTrackId(nextTrack.id);
     }
-  };
-
-  const adjustVolume = (step: number) => {
-    setVolume((prev) => clampVolume(prev + step));
-  };
-
-  const handleMuteToggle = () => {
-    if (volume === 0) {
-      setVolume(clampVolume(lastNonZeroVolumeRef.current || DEFAULT_AUDIO_STATE.volume));
-      return;
-    }
-    setVolume(0);
   };
 
   const handleToggle = async () => {
@@ -212,39 +225,19 @@ export function AudioPlayer() {
             <SkipForward aria-hidden="true" />
           </button>
 
-          <button
-            type="button"
-            className="audio-icon-btn"
-            aria-label="Sesi azalt"
-            title="Sesi azalt"
-            onClick={() => adjustVolume(-0.12)}
-          >
-            <Volume1 aria-hidden="true" />
-          </button>
-
-          <button
-            type="button"
-            className="audio-icon-btn"
-            aria-label={volume === 0 ? "Sesi aç" : "Sesi kapat"}
-            title={volume === 0 ? "Sesi aç" : "Sesi kapat"}
-            onClick={handleMuteToggle}
-          >
-            {volume === 0 ? (
-              <VolumeX aria-hidden="true" />
-            ) : (
-              <Volume1 aria-hidden="true" />
-            )}
-          </button>
-
-          <button
-            type="button"
-            className="audio-icon-btn"
-            aria-label="Sesi artır"
-            title="Sesi artır"
-            onClick={() => adjustVolume(0.12)}
-          >
-            <Volume2 aria-hidden="true" />
-          </button>
+          <label className="audio-intensity" htmlFor="audio-volume-slider">
+            <span className="sr-only">Müzik şiddeti</span>
+            <input
+              id="audio-volume-slider"
+              className="audio-intensity-slider"
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={volume}
+              onChange={(event) => setVolume(clampVolume(Number(event.target.value)))}
+            />
+          </label>
         </div>
 
         {error ? <p className="error-text">{error}</p> : null}
