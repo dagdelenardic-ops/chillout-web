@@ -61,6 +61,7 @@ function readStoredAudioState(): StoredAudioState {
 
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastNonZeroVolumeRef = useRef(DEFAULT_AUDIO_STATE.volume);
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
   const [trackId, setTrackId] = useState(() => readStoredAudioState().trackId);
@@ -69,6 +70,10 @@ export function AudioPlayer() {
   const activeTrack = useMemo(
     () => audioTracks.find((track) => track.id === trackId) ?? audioTracks[0],
     [trackId]
+  );
+  const activeTrackIndex = useMemo(
+    () => Math.max(0, audioTracks.findIndex((track) => track.id === activeTrack?.id)),
+    [activeTrack]
   );
 
   useEffect(() => {
@@ -113,6 +118,36 @@ export function AudioPlayer() {
     audio.volume = volume;
   }, [volume]);
 
+  useEffect(() => {
+    if (volume > 0) {
+      lastNonZeroVolumeRef.current = volume;
+    }
+  }, [volume]);
+
+  const goToTrackByOffset = (offset: number) => {
+    if (audioTracks.length < 2) {
+      return;
+    }
+    const nextIndex =
+      (activeTrackIndex + offset + audioTracks.length) % audioTracks.length;
+    const nextTrack = audioTracks[nextIndex];
+    if (nextTrack) {
+      setTrackId(nextTrack.id);
+    }
+  };
+
+  const adjustVolume = (step: number) => {
+    setVolume((prev) => clampVolume(prev + step));
+  };
+
+  const handleMuteToggle = () => {
+    if (volume === 0) {
+      setVolume(clampVolume(lastNonZeroVolumeRef.current || DEFAULT_AUDIO_STATE.volume));
+      return;
+    }
+    setVolume(0);
+  };
+
   const handleToggle = async () => {
     const audio = audioRef.current;
     if (!audio || !activeTrack) {
@@ -137,50 +172,65 @@ export function AudioPlayer() {
   return (
     <aside className="audio-dock" aria-label="Müzik oynatıcı">
       <article className="soft-card audio-dock-card">
-        <h2>Loop Müzik</h2>
-        <p className="audio-summary">Sekme değişse de çalmaya devam eder.</p>
+        <div className="audio-shell">
+          <div className="audio-header">
+            <h2>Loop Müzik</h2>
+            <p className="audio-summary">Sayfada gezerken müzik kesilmez.</p>
+            <p className="meta-line audio-track-indicator">
+              Parça {activeTrackIndex + 1} / {audioTracks.length}
+            </p>
+          </div>
 
-        <div className="inline-controls audio-inline-controls">
-          <label htmlFor="track-select">Parça</label>
-          <select
-            id="track-select"
-            value={activeTrack?.id}
-            onChange={(event) => setTrackId(event.target.value)}
-          >
-            {audioTracks.map((track) => (
-              <option key={track.id} value={track.id}>
-                {track.title}
-              </option>
-            ))}
-          </select>
+          <div className="audio-nav" role="group" aria-label="Müzik navigasyonu">
+            <button
+              type="button"
+              className="audio-nav-btn"
+              onClick={() => goToTrackByOffset(-1)}
+            >
+              Geri
+            </button>
+
+            <button
+              type="button"
+              className="audio-nav-btn audio-nav-main"
+              onClick={handleToggle}
+            >
+              {enabled ? "Durdur" : "Çal"}
+            </button>
+
+            <button
+              type="button"
+              className="audio-nav-btn"
+              onClick={() => goToTrackByOffset(1)}
+            >
+              İleri
+            </button>
+
+            <button
+              type="button"
+              className="audio-nav-btn"
+              onClick={() => adjustVolume(-0.12)}
+            >
+              Ses -
+            </button>
+
+            <button type="button" className="audio-nav-btn" onClick={handleMuteToggle}>
+              {volume === 0 ? "Sesi Aç" : "Sessiz"}
+            </button>
+
+            <button
+              type="button"
+              className="audio-nav-btn"
+              onClick={() => adjustVolume(0.12)}
+            >
+              Ses +
+            </button>
+          </div>
+
+          <div className="audio-level-bar" aria-hidden="true">
+            <span style={{ width: `${Math.round(volume * 100)}%` }} />
+          </div>
         </div>
-
-        <div
-          className="player-controls audio-player-controls"
-          style={{ marginTop: 12 }}
-        >
-          <button type="button" className="action-btn" onClick={handleToggle}>
-            {enabled ? "Müziği Kapat" : "Müziği Aç"}
-          </button>
-
-          <label htmlFor="volume-range">Ses</label>
-          <input
-            id="volume-range"
-            type="range"
-            min={0}
-            max={1}
-            step={0.01}
-            value={volume}
-            onChange={(event) => setVolume(Number(event.target.value))}
-          />
-          <span className="meta-line audio-volume-text">
-            {Math.round(volume * 100)}%
-          </span>
-        </div>
-
-        <p className="meta-line" style={{ marginTop: 12 }}>
-          Aktif dosya: <code>{activeTrack?.file ?? "dosya yok"}</code>
-        </p>
 
         {error ? <p className="error-text">{error}</p> : null}
 
