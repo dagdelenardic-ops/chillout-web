@@ -89,6 +89,16 @@ function authHelpText(code: string, fallbackMessage: string): string {
   return fallbackMessage || "Firebase ayarlarını (Auth + Domain + env) kontrol edip tekrar dene.";
 }
 
+function formatApiKeyHint(apiKey: string | undefined): string {
+  if (!apiKey) {
+    return "bilinmiyor";
+  }
+  if (apiKey.length <= 12) {
+    return apiKey;
+  }
+  return `${apiKey.slice(0, 8)}...${apiKey.slice(-4)}`;
+}
+
 function formatCreatedAt(value: Date | null): string {
   if (!value) {
     return "şimdi";
@@ -255,8 +265,13 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
           return;
         }
       }
+      const keyHint = formatApiKeyHint(services?.config.apiKey);
+      const sourceHint = services?.source ?? "bilinmiyor";
       setError(
-        `Google girişi başarısız (${code}). ${authHelpText(code, popupMeta.message)}`
+        `Google girişi başarısız (${code}). ${authHelpText(
+          code,
+          popupMeta.message
+        )} (Kaynak: ${sourceHint}, Key: ${keyHint})`
       );
     } finally {
       setIsSigningIn(false);
