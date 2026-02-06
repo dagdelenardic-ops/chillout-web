@@ -44,12 +44,12 @@ const envFirebaseConfig: Partial<FirebasePublicConfig> = {
 // Public Firebase web config (not a secret). Used as a resilient default when
 // deployment env vars are missing or malformed.
 const bundledFirebaseConfig: FirebasePublicConfig = {
-  apiKey: "AIzaSyCmH9S1xWbHYD7lez6M3txbSoZgM12_w",
+  apiKey: "AIzaSyCmH9S1xWwBHYD7lez6M3txbSozGgM12_w",
   authDomain: "chillout-web.firebaseapp.com",
   projectId: "chillout-web",
   storageBucket: "chillout-web.firebasestorage.app",
-  messagingSenderId: "54354389429",
-  appId: "1:54354389429:web:ebf0259496b46d2f33030",
+  messagingSenderId: "543543894929",
+  appId: "1:543543894929:web:ebf0259496b46d20f33030",
 };
 
 export const FIREBASE_RUNTIME_STORAGE_KEY = "chillout_firebase_config";
@@ -168,6 +168,13 @@ function selectResolvedConfig(
     };
   }
 
+  if (isCompleteFirebaseConfig(bundledFirebaseConfig)) {
+    return {
+      config: bundledFirebaseConfig,
+      source: "bundled",
+    };
+  }
+
   if (isCompleteFirebaseConfig(envFirebaseConfig)) {
     return {
       config: envFirebaseConfig,
@@ -180,13 +187,6 @@ function selectResolvedConfig(
     return {
       config: runtime,
       source: "runtime",
-    };
-  }
-
-  if (isCompleteFirebaseConfig(bundledFirebaseConfig)) {
-    return {
-      config: bundledFirebaseConfig,
-      source: "bundled",
     };
   }
 
