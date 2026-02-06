@@ -35,6 +35,7 @@ type ChatMessage = {
 
 type ChatBoxProps = {
   isBreakPhase: boolean;
+  canWriteInChat: boolean;
 };
 
 function extractErrorMeta(reason: unknown): { code: string; message: string } {
@@ -110,7 +111,7 @@ function formatCreatedAt(value: Date | null): string {
   }).format(value);
 }
 
-export function ChatBox({ isBreakPhase }: ChatBoxProps) {
+export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
   const [services, setServices] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -179,17 +180,20 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
-  const canSend = Boolean(user) && draft.trim().length > 0;
+  const canSend = Boolean(user) && canWriteInChat && draft.trim().length > 0;
 
   const statusText = useMemo(() => {
     if (!user) {
       return "Mesaj göndermek için Google ile giriş yap.";
     }
-    if (!isBreakPhase) {
-      return "Sohbet açık. Şu an odak modundasın, istersen yine mesaj yazabilirsin.";
+    if (canWriteInChat) {
+      return "Dinlenme süresi aktif. Bu 5 dakika boyunca sohbet alanına mesaj yazabilirsin.";
     }
-    return "Tek oda aktif. Kısa ve sakin mesajlar bırak.";
-  }, [isBreakPhase, user]);
+    if (isBreakPhase) {
+      return "Dinlenme penceresi kapandı. Yeniden yazmak için pomodoroyu başlatıp bir sonraki dinlenme süresine geç.";
+    }
+    return "Sohbet mesajları herkese açık görünür. Yazmak için pomodoroyu başlat ve dinlenme modunu bekle.";
+  }, [canWriteInChat, isBreakPhase, user]);
 
   const handleSetupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -290,6 +294,13 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
     event.preventDefault();
 
     if (!db || !user) {
+      return;
+    }
+
+    if (!canWriteInChat) {
+      setError(
+        "Mesaj gönderme şu an kapalı. Yazmak için pomodoroyu başlatıp dinlenme süresine geç."
+      );
       return;
     }
 
@@ -414,10 +425,16 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
       <form className="chat-form" onSubmit={handleSubmit}>
         <input
           type="text"
-          placeholder="Mesajını yaz..."
+          placeholder={
+            !user
+              ? "Mesaj yazmak için giriş yap..."
+              : canWriteInChat
+                ? "Mesajını yaz..."
+                : "Pomodoroyu başlat, dinlenme modunda yaz..."
+          }
           value={draft}
           onChange={(event) => setDraft(event.target.value)}
-          disabled={!user}
+          disabled={!user || !canWriteInChat}
           maxLength={240}
         />
         <button type="submit" className="secondary-btn" disabled={!canSend}>

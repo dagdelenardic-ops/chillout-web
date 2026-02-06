@@ -19,6 +19,7 @@ const TAB_LABELS: Record<Tab, string> = {
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("chill");
   const [phase, setPhase] = useState<PomodoroPhase>("focus");
+  const [canWriteInChat, setCanWriteInChat] = useState(false);
 
   const featured = discoverySites.slice(0, 4);
 
@@ -102,11 +103,20 @@ export default function Home() {
         {activeTab === "pomodoro" ? (
           <>
             <article className="chat-banner">
-              Sohbet tek odada aktif. Odak veya dinlenme modunda yazabilirsin.
+              Genel sohbet herkes tarafından görünür. Mesaj yazma yalnızca
+              pomodoro başlatıldıktan sonra 5 dakikalık dinlenme süresinde
+              açılır. Süre bitince yazma kilitlenir; tekrar yazmak için pomodoroyu
+              yeniden başlatman gerekir.
             </article>
             <div className="pomodoro-grid">
-              <PomodoroTimer onPhaseChange={setPhase} />
-              <ChatBox isBreakPhase={phase === "break"} />
+              <PomodoroTimer
+                onPhaseChange={setPhase}
+                onChatWriteChange={setCanWriteInChat}
+              />
+              <ChatBox
+                isBreakPhase={phase === "break"}
+                canWriteInChat={canWriteInChat}
+              />
             </div>
           </>
         ) : null}

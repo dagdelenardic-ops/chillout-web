@@ -9,6 +9,7 @@ export type PomodoroPhase = "focus" | "break";
 
 type PomodoroTimerProps = {
   onPhaseChange?: (phase: PomodoroPhase) => void;
+  onChatWriteChange?: (canWrite: boolean) => void;
 };
 
 function formatTime(seconds: number): string {
@@ -19,14 +20,24 @@ function formatTime(seconds: number): string {
   return `${minutes}:${remaining}`;
 }
 
-export function PomodoroTimer({ onPhaseChange }: PomodoroTimerProps) {
+export function PomodoroTimer({
+  onPhaseChange,
+  onChatWriteChange,
+}: PomodoroTimerProps) {
   const [phase, setPhase] = useState<PomodoroPhase>("focus");
   const [secondsLeft, setSecondsLeft] = useState(FOCUS_SECONDS);
   const [isRunning, setIsRunning] = useState(false);
+  const [hasStartedPomodoro, setHasStartedPomodoro] = useState(false);
+
+  const canWriteInChat = hasStartedPomodoro && phase === "break";
 
   useEffect(() => {
     onPhaseChange?.(phase);
   }, [phase, onPhaseChange]);
+
+  useEffect(() => {
+    onChatWriteChange?.(canWriteInChat);
+  }, [canWriteInChat, onChatWriteChange]);
 
   useEffect(() => {
     if (!isRunning) {
@@ -45,6 +56,8 @@ export function PomodoroTimer({ onPhaseChange }: PomodoroTimerProps) {
         }
 
         setPhase("focus");
+        setIsRunning(false);
+        setHasStartedPomodoro(false);
         return FOCUS_SECONDS;
       });
     }, 1000);
@@ -56,6 +69,17 @@ export function PomodoroTimer({ onPhaseChange }: PomodoroTimerProps) {
     setIsRunning(false);
     setPhase("focus");
     setSecondsLeft(FOCUS_SECONDS);
+    setHasStartedPomodoro(false);
+  };
+
+  const handleStartPause = () => {
+    setIsRunning((prev) => {
+      const next = !prev;
+      if (next && !hasStartedPomodoro) {
+        setHasStartedPomodoro(true);
+      }
+      return next;
+    });
   };
 
   const progress = useMemo(() => {
@@ -70,8 +94,9 @@ export function PomodoroTimer({ onPhaseChange }: PomodoroTimerProps) {
       </span>
       <h2>Klasik Pomodoro</h2>
       <p>
-        Akış otomatik: 25 dakika odak, sonra 5 dakika dinlen. Dinlenme anında
-        sağdaki sohbet aktif olur.
+        25 dakika odak ve 5 dakika dinlenme akışı çalışır. Mesaj yazma hakkı
+        yalnızca dinlenme süresinde açıktır. Dinlenme bitince sohbet yazma alanı
+        kilitlenir; yeniden yazmak için pomodoroyu tekrar başlatmalısın.
       </p>
 
       <p className="kpi">{formatTime(secondsLeft)}</p>
@@ -102,7 +127,7 @@ export function PomodoroTimer({ onPhaseChange }: PomodoroTimerProps) {
         <button
           type="button"
           className="action-btn"
-          onClick={() => setIsRunning((prev) => !prev)}
+          onClick={handleStartPause}
         >
           {isRunning ? "Duraklat" : "Başlat"}
         </button>
