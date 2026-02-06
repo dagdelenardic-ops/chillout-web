@@ -89,10 +89,15 @@ a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
   line-height: 1;
   cursor: pointer;
   transition: border-color 160ms ease, transform 160ms ease, background-color 160ms ease;
+}
+
+.audio-icon-btn svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 2.1;
 }
 
 .audio-icon-btn:hover {
@@ -103,7 +108,6 @@ a {
 .audio-icon-main {
   width: 42px;
   height: 42px;
-  font-size: 1.05rem;
   border-color: transparent;
   background: linear-gradient(
     100deg,
@@ -111,6 +115,11 @@ a {
     rgba(255, 211, 115, 0.95)
   );
   color: #032b25;
+}
+
+.audio-icon-main svg {
+  width: 19px;
+  height: 19px;
 }
 
 .hero {
@@ -586,13 +595,11 @@ label {
   .audio-icon-btn {
     width: 34px;
     height: 34px;
-    font-size: 0.92rem;
   }
 
   .audio-icon-main {
     width: 38px;
     height: 38px;
-    font-size: 0.96rem;
   }
 
   .roll-grid {

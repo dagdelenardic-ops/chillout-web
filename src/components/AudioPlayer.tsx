@@ -1,6 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  Pause,
+  Play,
+  SkipBack,
+  SkipForward,
+  Volume1,
+  Volume2,
+  VolumeX,
+} from "lucide-react";
 import { audioTracks } from "@/data/audioTracks";
 
 const AUDIO_STATE_KEY = "chillout_audio_state_v1";
@@ -180,7 +189,7 @@ export function AudioPlayer() {
             title="Önceki parça"
             onClick={() => goToTrackByOffset(-1)}
           >
-            ⏮
+            <SkipBack aria-hidden="true" />
           </button>
 
           <button
@@ -190,7 +199,7 @@ export function AudioPlayer() {
             title={enabled ? "Durdur" : "Çal"}
             onClick={handleToggle}
           >
-            {enabled ? "⏸" : "▶"}
+            {enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
           </button>
 
           <button
@@ -200,7 +209,7 @@ export function AudioPlayer() {
             title="Sonraki parça"
             onClick={() => goToTrackByOffset(1)}
           >
-            ⏭
+            <SkipForward aria-hidden="true" />
           </button>
 
           <button
@@ -210,7 +219,7 @@ export function AudioPlayer() {
             title="Sesi azalt"
             onClick={() => adjustVolume(-0.12)}
           >
-            🔉
+            <Volume1 aria-hidden="true" />
           </button>
 
           <button
@@ -220,7 +229,11 @@ export function AudioPlayer() {
             title={volume === 0 ? "Sesi aç" : "Sesi kapat"}
             onClick={handleMuteToggle}
           >
-            {volume === 0 ? "🔇" : "🔈"}
+            {volume === 0 ? (
+              <VolumeX aria-hidden="true" />
+            ) : (
+              <Volume1 aria-hidden="true" />
+            )}
           </button>
 
           <button
@@ -230,7 +243,7 @@ export function AudioPlayer() {
             title="Sesi artır"
             onClick={() => adjustVolume(0.12)}
           >
-            🔊
+            <Volume2 aria-hidden="true" />
           </button>
         </div>
 
