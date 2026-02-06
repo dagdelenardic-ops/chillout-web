@@ -8,7 +8,6 @@ import {
   signInWithRedirect,
   signOut,
 } from "firebase/auth";
-import { FirebaseError } from "firebase/app";
 import {
   addDoc,
   collection,
@@ -37,6 +36,58 @@ type ChatMessage = {
 type ChatBoxProps = {
   isBreakPhase: boolean;
 };
+
+function extractErrorMeta(reason: unknown): { code: string; message: string } {
+  if (typeof reason === "string") {
+    return { code: "unknown", message: reason };
+  }
+
+  if (reason && typeof reason === "object") {
+    const maybe = reason as { code?: unknown; message?: unknown };
+    const code = typeof maybe.code === "string" ? maybe.code : "unknown";
+    const message = typeof maybe.message === "string" ? maybe.message : "";
+    return { code, message };
+  }
+
+  return { code: "unknown", message: "" };
+}
+
+function authHelpText(code: string, fallbackMessage: string): string {
+  const normalized = code.toLowerCase();
+
+  if (
+    normalized === "auth/invalid-api-key" ||
+    normalized.includes("api-key-not-valid")
+  ) {
+    return "Firebase API key hatalı. Vercel Environment Variables içindeki değerleri Firebase config'ten birebir kopyala.";
+  }
+
+  if (normalized === "auth/unauthorized-domain") {
+    return "Bu domain Firebase > Authentication > Settings > Authorized domains listesinde olmalı.";
+  }
+
+  if (normalized === "auth/operation-not-allowed") {
+    return "Firebase Authentication > Sign-in method içinde Google sağlayıcısı etkin olmalı.";
+  }
+
+  if (normalized === "auth/network-request-failed") {
+    return "Ağ isteği başarısız. VPN/engel/bağlantıyı kontrol edip tekrar dene.";
+  }
+
+  if (normalized === "auth/popup-blocked") {
+    return "Tarayıcı popup engelledi. İzin ver veya tekrar dene.";
+  }
+
+  if (normalized === "auth/popup-closed-by-user") {
+    return "Google giriş penceresi erken kapatıldı. Tekrar dene.";
+  }
+
+  if (normalized === "auth/cancelled-popup-request") {
+    return "Aynı anda birden fazla popup isteği başladı. Bir kez tıklayıp bekle.";
+  }
+
+  return fallbackMessage || "Firebase ayarlarını (Auth + Domain + env) kontrol edip tekrar dene.";
+}
 
 function formatCreatedAt(value: Date | null): string {
   if (!value) {
@@ -182,21 +233,31 @@ export function ChatBox({ isBreakPhase }: ChatBoxProps) {
     try {
       await signInWithPopup(auth, googleProvider);
     } catch (reason) {
-      const code = reason instanceof FirebaseError ? reason.code : "unknown";
+      const popupMeta = extractErrorMeta(reason);
+      const code = popupMeta.code;
       if (
         code === "auth/popup-blocked" ||
         code === "auth/popup-closed-by-user" ||
-        code === "auth/operation-not-supported-in-this-environment"
+        code === "auth/operation-not-supported-in-this-environment" ||
+        code === "auth/cancelled-popup-request"
       ) {
         try {
           await signInWithRedirect(auth, googleProvider);
           return;
-        } catch {
-          setError("Google girişinde popup ve redirect denemesi başarısız oldu.");
+        } catch (redirectReason) {
+          const redirectMeta = extractErrorMeta(redirectReason);
+          setError(
+            `Google girişi başarısız (${redirectMeta.code}). ${authHelpText(
+              redirectMeta.code,
+              redirectMeta.message
+            )}`
+          );
           return;
         }
       }
-      setError(`Google girişi başarısız (${code}).`);
+      setError(
+        `Google girişi başarısız (${code}). ${authHelpText(code, popupMeta.message)}`
+      );
     } finally {
       setIsSigningIn(false);
     }
