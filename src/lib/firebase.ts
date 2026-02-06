@@ -11,7 +11,7 @@ export type FirebasePublicConfig = {
   appId: string;
 };
 
-export type FirebaseSource = "env" | "runtime";
+export type FirebaseSource = "bundled" | "env" | "runtime";
 
 export type FirebaseServices = {
   app: FirebaseApp;
@@ -39,6 +39,17 @@ const envFirebaseConfig: Partial<FirebasePublicConfig> = {
     process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
   ),
   appId: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
+};
+
+// Public Firebase web config (not a secret). Used as a resilient default when
+// deployment env vars are missing or malformed.
+const bundledFirebaseConfig: FirebasePublicConfig = {
+  apiKey: "AIzaSyCmH9S1xWbHYD7lez6M3txbSoZgM12_w",
+  authDomain: "chillout-web.firebaseapp.com",
+  projectId: "chillout-web",
+  storageBucket: "chillout-web.firebasestorage.app",
+  messagingSenderId: "54354389429",
+  appId: "1:54354389429:web:ebf0259496b46d2f33030",
 };
 
 export const FIREBASE_RUNTIME_STORAGE_KEY = "chillout_firebase_config";
@@ -141,6 +152,20 @@ export function getRuntimeFirebaseConfig(): Partial<FirebasePublicConfig> | null
 function selectResolvedConfig(
   preferredRuntime?: Partial<FirebasePublicConfig> | null
 ): { config: FirebasePublicConfig; source: FirebaseSource } | null {
+  if (isCompleteFirebaseConfig(preferredRuntime)) {
+    return {
+      config: preferredRuntime,
+      source: "runtime",
+    };
+  }
+
+  if (isCompleteFirebaseConfig(bundledFirebaseConfig)) {
+    return {
+      config: bundledFirebaseConfig,
+      source: "bundled",
+    };
+  }
+
   if (isCompleteFirebaseConfig(envFirebaseConfig)) {
     return {
       config: envFirebaseConfig,
@@ -148,7 +173,7 @@ function selectResolvedConfig(
     };
   }
 
-  const runtime = preferredRuntime ?? getRuntimeFirebaseConfig();
+  const runtime = getRuntimeFirebaseConfig();
   if (isCompleteFirebaseConfig(runtime)) {
     return {
       config: runtime,
