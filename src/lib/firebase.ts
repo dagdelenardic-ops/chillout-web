@@ -90,9 +90,18 @@ function signatureFromConfig(config: FirebasePublicConfig): string {
   return REQUIRED_KEYS.map((key) => config[key]).join("|");
 }
 
+function shortHash(input: string): string {
+  let hash = 0;
+  for (let index = 0; index < input.length; index += 1) {
+    hash = (hash * 31 + input.charCodeAt(index)) >>> 0;
+  }
+  return hash.toString(36);
+}
+
 function appNameFromConfig(config: FirebasePublicConfig): string {
-  const project = config.projectId.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 40);
-  return `chillout-${project || "runtime"}`;
+  const project = config.projectId.replace(/[^a-zA-Z0-9-]/g, "").slice(0, 24);
+  const fingerprint = shortHash(signatureFromConfig(config)).slice(0, 8);
+  return `chillout-${project || "runtime"}-${fingerprint}`;
 }
 
 export function isCompleteFirebaseConfig(
