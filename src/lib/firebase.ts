@@ -31,12 +31,14 @@ const REQUIRED_KEYS: Array<keyof FirebasePublicConfig> = [
 ];
 
 const envFirebaseConfig: Partial<FirebasePublicConfig> = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_API_KEY),
+  authDomain: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN),
+  projectId: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID),
+  storageBucket: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET),
+  messagingSenderId: asTrimmedString(
+    process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+  ),
+  appId: asTrimmedString(process.env.NEXT_PUBLIC_FIREBASE_APP_ID),
 };
 
 export const FIREBASE_RUNTIME_STORAGE_KEY = "chillout_firebase_config";
