@@ -25,6 +25,7 @@ export default function Home() {
   return (
     <main className="page-shell">
       <BackgroundVideoWall />
+      <AudioPlayer />
 
       <header className="hero">
         <p className="hero-chip">Chillout Hub</p>
@@ -67,7 +68,13 @@ export default function Home() {
       <section className="panel">
         {activeTab === "chill" ? (
           <div className="chill-grid">
-            <AudioPlayer />
+            <article className="soft-card">
+              <h2>Müzik Kontrolü Her Yerde Aktif</h2>
+              <p>
+                Alttaki sabit oynatıcı tüm sekmelerde açık kalır. Parça değiştir,
+                sesi ayarla ve sayfalar arasında gezerken müzik kesilmeden devam etsin.
+              </p>
+            </article>
             <article className="soft-card">
               <h2>Bugünün Kafa Dağıtma Önerileri</h2>
               <p>

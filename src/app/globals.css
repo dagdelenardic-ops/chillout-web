@@ -41,12 +41,53 @@ a {
 .page-shell {
   max-width: 1180px;
   margin: 0 auto;
-  padding: 30px 20px 60px;
+  padding: 30px 20px 190px;
   display: grid;
   gap: 18px;
   position: relative;
   z-index: 2;
   isolation: isolate;
+}
+
+.audio-dock {
+  position: fixed;
+  left: 50%;
+  bottom: max(12px, env(safe-area-inset-bottom));
+  transform: translateX(-50%);
+  width: min(1140px, calc(100vw - 22px));
+  z-index: 30;
+}
+
+.audio-dock-card {
+  border-radius: 16px;
+  padding: 14px 16px;
+  background: rgba(8, 16, 22, 0.92);
+  border: 1px solid rgba(182, 227, 216, 0.38);
+  backdrop-filter: blur(10px);
+}
+
+.audio-dock-card h2 {
+  margin: 0;
+  font-size: 1.04rem;
+}
+
+.audio-dock-card .audio-summary {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.audio-inline-controls select {
+  min-width: 180px;
+  flex: 1 1 230px;
+}
+
+.audio-player-controls input[type="range"] {
+  width: 150px;
+}
+
+.audio-volume-text {
+  min-width: 42px;
+  text-align: right;
 }
 
 .hero {
@@ -451,7 +492,24 @@ label {
 
 @media (max-width: 960px) {
   .page-shell {
-    padding: 20px 14px 40px;
+    padding: 18px 12px 200px;
+    gap: 14px;
+  }
+
+  .hero-actions .action-btn,
+  .hero-actions .secondary-btn {
+    width: 100%;
+  }
+
+  .tab-nav {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    padding-bottom: 4px;
+    scrollbar-width: thin;
+  }
+
+  .tab-btn {
+    white-space: nowrap;
   }
 
   .chill-grid,
@@ -461,6 +519,65 @@ label {
 
   .chat-form {
     grid-template-columns: 1fr;
+  }
+
+  .soft-card {
+    padding: 14px;
+    border-radius: 14px;
+  }
+
+  .audio-dock {
+    width: calc(100vw - 12px);
+    bottom: max(6px, env(safe-area-inset-bottom));
+  }
+
+  .audio-dock-card {
+    padding: 12px 12px;
+  }
+
+  .audio-player-controls input[type="range"] {
+    flex: 1 1 140px;
+    width: auto;
+  }
+
+  .chat-list {
+    max-height: 240px;
+  }
+}
+
+@media (max-width: 640px) {
+  .hero h1 {
+    max-width: 100%;
+    line-height: 1.14;
+  }
+
+  .hero-sub {
+    font-size: 0.92rem;
+  }
+
+  .tab-btn {
+    padding: 9px 12px;
+    font-size: 0.86rem;
+  }
+
+  .audio-dock-card h2 {
+    font-size: 0.96rem;
+  }
+
+  .audio-dock-card .audio-summary {
+    font-size: 0.82rem;
+  }
+
+  .roll-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .action-btn,
+  .secondary-btn,
+  .link-btn,
+  .ghost-btn {
+    padding: 9px 12px;
+    font-size: 0.86rem;
   }
 }
 
