@@ -72,6 +72,8 @@ type ChatBoxProps = {
 };
 
 const GUEST_NAME_STORAGE_KEY = "chillout_guest_name_v1";
+const TASK_MAX_LENGTH = 220;
+const TASK_COMMENT_MAX_LENGTH = 180;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -270,6 +272,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const [chatDraft, setChatDraft] = useState("");
   const [taskDraft, setTaskDraft] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [openTaskComments, setOpenTaskComments] = useState<Record<string, boolean>>({});
   const [guestName, setGuestName] = useState("");
   const [isGuestNameLocked, setIsGuestNameLocked] = useState(false);
   const [chatVisibleCount, setChatVisibleCount] = useState(6);
@@ -482,6 +485,15 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       .sort((a, b) => b.createdAtMs - a.createdAtMs);
   }, [roomDocs]);
 
+  const activeTasks = useMemo(
+    () => tasks.filter((task) => !task.completed),
+    [tasks]
+  );
+  const completedTasks = useMemo(
+    () => tasks.filter((task) => task.completed),
+    [tasks]
+  );
+
   const stats = useMemo(() => {
     const completed = tasks.filter((task) => task.completed);
     const finishedByUsers = new Set(
@@ -492,6 +504,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       totalTasks: tasks.length,
       completedTasks: completed.length,
       completedUserCount: finishedByUsers.size,
+      activeTasks: tasks.length - completed.length,
     };
   }, [tasks]);
 
@@ -707,7 +720,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       return;
     }
 
-    const cleaned = taskDraft.trim();
+    const cleaned = taskDraft.trim().slice(0, TASK_MAX_LENGTH);
     if (!cleaned) {
       setError("İş metni boş olamaz.");
       return;
@@ -735,7 +748,14 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const handleCommentDraftChange = (taskId: string, value: string) => {
     setCommentDrafts((prev) => ({
       ...prev,
-      [taskId]: value,
+      [taskId]: value.slice(0, TASK_COMMENT_MAX_LENGTH),
+    }));
+  };
+
+  const toggleTaskComments = (taskId: string) => {
+    setOpenTaskComments((prev) => ({
+      ...prev,
+      [taskId]: !prev[taskId],
     }));
   };
 
@@ -761,7 +781,9 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       return;
     }
 
-    const cleaned = (commentDrafts[taskId] ?? "").trim();
+    const cleaned = (commentDrafts[taskId] ?? "")
+      .trim()
+      .slice(0, TASK_COMMENT_MAX_LENGTH);
     if (!cleaned) {
       return;
     }
@@ -855,6 +877,106 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     } finally {
       setIsCompletingTaskId(null);
     }
+  };
+
+  const renderTaskCard = (task: TaskView) => {
+    const comments = taskCommentsByTask[task.id] ?? [];
+    const isCommentsOpen = openTaskComments[task.id] ?? false;
+    const canMarkComplete = isGoogleUser && user?.uid === task.uid && !task.completed;
+    const commentDraft = commentDrafts[task.id] ?? "";
+    const canCommentSubmit =
+      commentDraft.trim().length > 0 &&
+      (isGoogleUser || canUseGuestMode);
+
+    return (
+      <article
+        key={task.id}
+        className={`task-card ${task.completed ? "is-completed" : ""}`}
+      >
+        <div className="task-head">
+          <strong>{task.displayName}</strong>
+          <span className="meta-line">{task.createdAtLabel}</span>
+        </div>
+
+        <p className="task-text">{renderTextWithLinks(task.text)}</p>
+
+        <div className="task-status-row">
+          {task.completed ? (
+            <span className="task-status done">
+              ✓ Tamamlandı
+              {task.completedByName ? ` • ${task.completedByName}` : ""}
+              {task.completedAtLabel ? ` • ${task.completedAtLabel}` : ""}
+            </span>
+          ) : (
+            <span className="task-status progress">Devam ediyor</span>
+          )}
+
+          {canMarkComplete ? (
+            <button
+              type="button"
+              className="ghost-btn"
+              onClick={() => handleCompleteTask(task)}
+              disabled={isCompletingTaskId === task.id}
+            >
+              {isCompletingTaskId === task.id ? "İşaretleniyor..." : "✓ Tamamladım"}
+            </button>
+          ) : null}
+        </div>
+
+        <button
+          type="button"
+          className="ghost-btn task-comments-toggle"
+          onClick={() => toggleTaskComments(task.id)}
+          aria-expanded={isCommentsOpen}
+        >
+          {isCommentsOpen ? "Yorumları Gizle" : `Yorumlar (${comments.length})`}
+        </button>
+
+        {isCommentsOpen ? (
+          <div className="task-comments">
+            {comments.length === 0 ? (
+              <p className="meta-line">Henüz yorum yok.</p>
+            ) : (
+              comments.map((comment) => (
+                <article key={comment.id} className="task-comment">
+                  <div className="task-comment-head">
+                    <strong>{comment.displayName}</strong>
+                    <span>{comment.createdAtLabel}</span>
+                  </div>
+                  <p>{renderTextWithLinks(comment.text)}</p>
+                </article>
+              ))
+            )}
+
+            <form className="chat-form" onSubmit={(event) => handleSendComment(event, task.id)}>
+              <input
+                type="text"
+                placeholder={
+                  isGoogleUser
+                    ? "Bu işe yorum yaz..."
+                    : "Yorum yaz. Göndermek için üstte nick yazıp ✓ ile onayla..."
+                }
+                value={commentDraft}
+                onChange={(event) =>
+                  handleCommentDraftChange(task.id, event.target.value)
+                }
+                maxLength={TASK_COMMENT_MAX_LENGTH}
+              />
+              <button
+                type="submit"
+                className="secondary-btn"
+                disabled={!canCommentSubmit}
+              >
+                Yorumla
+              </button>
+            </form>
+            <p className="meta-line char-counter">
+              {commentDraft.length}/{TASK_COMMENT_MAX_LENGTH}
+            </p>
+          </div>
+        ) : null}
+      </article>
+    );
   };
 
   if (!isFirebaseConfigured) {
@@ -967,7 +1089,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
               type="text"
               value={guestName}
               onChange={(event) => setGuestName(event.target.value.slice(0, 40))}
-              placeholder="Örn: Gurur"
+              placeholder="Örn: Ardıç"
               disabled={isGuestNameLocked}
               maxLength={40}
             />
@@ -1008,20 +1130,25 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                 type="text"
                 placeholder={
                   isGoogleUser
-                    ? "Örn: Gurur Sönmez vibecoding ile jeopolitik harita yapıyor."
+                    ? "Örn: Ardıç vibecoding ile jeopolitik harita yapıyor."
                     : mode === "tasks"
-                      ? "Yazmak için sağdaki sohbet kartından Google ile giriş yap..."
+                      ? "İş paylaşımı için Google ile giriş yap..."
                       : "İş paylaşmak için Google ile giriş yap..."
                 }
                 value={taskDraft}
-                onChange={(event) => setTaskDraft(event.target.value)}
+                onChange={(event) =>
+                  setTaskDraft(event.target.value.slice(0, TASK_MAX_LENGTH))
+                }
                 disabled={!isGoogleUser}
-                maxLength={240}
+                maxLength={TASK_MAX_LENGTH}
               />
               <button type="submit" className="secondary-btn" disabled={!canSendTask}>
                 Paylaş
               </button>
             </form>
+            <p className="meta-line char-counter">
+              {taskDraft.length}/{TASK_MAX_LENGTH}
+            </p>
           </section>
 
           <section className="task-stats" aria-label="İş istatistikleri">
@@ -1032,105 +1159,37 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
               Tamamlanan iş: <strong>{stats.completedTasks}</strong>
             </span>
             <span className="stats-pill">
+              Devam eden: <strong>{stats.activeTasks}</strong>
+            </span>
+            <span className="stats-pill">
               İş bitiren kişi: <strong>{stats.completedUserCount}</strong>
             </span>
           </section>
 
           <section className="task-list" aria-label="Paylaşılan işler">
-            {tasks.length === 0 ? (
-              <p className="meta-line">Henüz iş paylaşılmadı. İlk paylaşımı sen yap.</p>
-            ) : (
-              tasks.map((task) => {
-                const comments = taskCommentsByTask[task.id] ?? [];
-                const canMarkComplete =
-                  isGoogleUser && user?.uid === task.uid && !task.completed;
-                const commentDraft = commentDrafts[task.id] ?? "";
-                const canCommentSubmit =
-                  commentDraft.trim().length > 0 &&
-                  (isGoogleUser || canUseGuestMode);
+            <div className="task-list-section">
+              <div className="task-section-head">
+                <h3>Aktif İşler</h3>
+                <span className="task-count-pill">{activeTasks.length}</span>
+              </div>
+              {activeTasks.length === 0 ? (
+                <p className="meta-line">Aktif iş yok. Yeni bir iş paylaşabilirsin.</p>
+              ) : (
+                activeTasks.map((task) => renderTaskCard(task))
+              )}
+            </div>
 
-                return (
-                  <article
-                    key={task.id}
-                    className={`task-card ${task.completed ? "is-completed" : ""}`}
-                  >
-                    <div className="task-head">
-                      <strong>{task.displayName}</strong>
-                      <span className="meta-line">{task.createdAtLabel}</span>
-                    </div>
-
-                    <p className="task-text">{renderTextWithLinks(task.text)}</p>
-
-                    <div className="task-status-row">
-                      {task.completed ? (
-                        <span className="task-status done">
-                          ✓ Tamamlandı
-                          {task.completedByName ? ` • ${task.completedByName}` : ""}
-                          {task.completedAtLabel ? ` • ${task.completedAtLabel}` : ""}
-                        </span>
-                      ) : (
-                        <span className="task-status progress">Devam ediyor</span>
-                      )}
-
-                      {canMarkComplete ? (
-                        <button
-                          type="button"
-                          className="ghost-btn"
-                          onClick={() => handleCompleteTask(task)}
-                          disabled={isCompletingTaskId === task.id}
-                        >
-                          {isCompletingTaskId === task.id ? "İşaretleniyor..." : "✓ Tamamlandı"}
-                        </button>
-                      ) : null}
-                    </div>
-
-                    <div className="task-comments">
-                      <p className="meta-line">Yorumlar</p>
-
-                      {comments.length === 0 ? (
-                        <p className="meta-line">Henüz yorum yok.</p>
-                      ) : (
-                        comments.map((comment) => (
-                          <article key={comment.id} className="task-comment">
-                            <div className="task-comment-head">
-                              <strong>{comment.displayName}</strong>
-                              <span>{comment.createdAtLabel}</span>
-                            </div>
-                            <p>{renderTextWithLinks(comment.text)}</p>
-                          </article>
-                        ))
-                      )}
-
-                      <form
-                        className="chat-form"
-                        onSubmit={(event) => handleSendComment(event, task.id)}
-                      >
-                        <input
-                          type="text"
-                          placeholder={
-                            isGoogleUser
-                              ? "Bu işe yorum yaz..."
-                              : "Yorum yaz. Göndermek için üstte nick yazıp ✓ ile onayla..."
-                          }
-                          value={commentDraft}
-                          onChange={(event) =>
-                            handleCommentDraftChange(task.id, event.target.value)
-                          }
-                          maxLength={240}
-                        />
-                        <button
-                          type="submit"
-                          className="secondary-btn"
-                          disabled={!canCommentSubmit}
-                        >
-                          Yorumla
-                        </button>
-                      </form>
-                    </div>
-                  </article>
-                );
-              })
-            )}
+            <div className="task-list-section">
+              <div className="task-section-head">
+                <h3>Biten İşler</h3>
+                <span className="task-count-pill">{completedTasks.length}</span>
+              </div>
+              {completedTasks.length === 0 ? (
+                <p className="meta-line">Henüz tamamlanan iş yok.</p>
+              ) : (
+                completedTasks.map((task) => renderTaskCard(task))
+              )}
+            </div>
           </section>
         </>
       ) : null}

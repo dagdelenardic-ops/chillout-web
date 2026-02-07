@@ -361,17 +361,32 @@ a {
   font-size: 0.92rem;
 }
 
-.chill-grid,
-.pomodoro-grid {
+.chill-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
 }
 
-.focus-column {
+.pomodoro-grid {
   display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-areas:
+    "pomodoro chat"
+    "tasks chat";
   gap: 16px;
-  align-content: start;
+  align-items: start;
+}
+
+.pomodoro-block {
+  grid-area: pomodoro;
+}
+
+.tasks-block {
+  grid-area: tasks;
+}
+
+.chat-block {
+  grid-area: chat;
 }
 
 .soft-card {
@@ -631,6 +646,36 @@ label {
   gap: 12px;
 }
 
+.task-list-section {
+  display: grid;
+  gap: 10px;
+}
+
+.task-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.task-section-head h3 {
+  margin: 0;
+}
+
+.task-count-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 30px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(182, 227, 216, 0.26);
+  background: rgba(10, 20, 26, 0.72);
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .task-card {
   border-radius: 14px;
   border: 1px solid rgba(182, 227, 216, 0.2);
@@ -694,6 +739,10 @@ label {
   gap: 8px;
 }
 
+.task-comments-toggle {
+  justify-self: start;
+}
+
 .task-comment {
   border-radius: 11px;
   border: 1px solid rgba(182, 227, 216, 0.18);
@@ -723,6 +772,11 @@ label {
   margin: 0;
   color: var(--ink-soft);
   font-size: 0.9rem;
+}
+
+.char-counter {
+  justify-self: end;
+  margin-top: -4px;
 }
 
 .roll-highlight {
@@ -864,9 +918,16 @@ label {
     white-space: nowrap;
   }
 
-  .chill-grid,
+  .chill-grid {
+    grid-template-columns: 1fr;
+  }
+
   .pomodoro-grid {
     grid-template-columns: 1fr;
+    grid-template-areas:
+      "pomodoro"
+      "chat"
+      "tasks";
   }
 
   .chat-form {

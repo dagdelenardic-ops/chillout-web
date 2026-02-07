@@ -43,11 +43,15 @@ export default function Home() {
       <section className="panel">
         {activeTab === "pomodoro" ? (
           <div className="pomodoro-grid">
-            <div className="focus-column">
+            <div className="pomodoro-block">
               <PomodoroTimer />
+            </div>
+            <div className="tasks-block">
               <ChatBox mode="tasks" />
             </div>
-            <ChatBox mode="chat" />
+            <div className="chat-block">
+              <ChatBox mode="chat" />
+            </div>
           </div>
         ) : null}
 
