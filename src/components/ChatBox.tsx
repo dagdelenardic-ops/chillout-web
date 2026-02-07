@@ -346,7 +346,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   }, [chatMessages]);
 
   const canSendChat = Boolean(user) && chatDraft.trim().length > 0;
-  const canSendTask = Boolean(user) && taskDraft.trim().length > 0;
+  const canSendTask = Boolean(user);
 
   const statusText = useMemo(() => {
     if (!user) {
@@ -503,6 +503,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
     const cleaned = taskDraft.trim();
     if (!cleaned) {
+      setError("İş metni boş olamaz.");
       return;
     }
 
@@ -517,8 +518,11 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         createdAt: serverTimestamp(),
       });
       setTaskDraft("");
-    } catch {
-      setError("İş paylaşımı gönderilemedi. Firestore izinlerini kontrol et.");
+    } catch (reason) {
+      const meta = extractErrorMeta(reason);
+      setError(
+        `İş paylaşımı gönderilemedi (${meta.code}). Firestore izinlerini kontrol et.`
+      );
     }
   };
 

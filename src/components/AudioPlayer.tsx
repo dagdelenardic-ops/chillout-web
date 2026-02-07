@@ -81,6 +81,7 @@ function readStoredAudioState(): StoredAudioState {
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const volumeRef = useRef<HTMLDivElement>(null);
+  const failedTrackIdsRef = useRef<Set<string>>(new Set());
   const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
@@ -88,6 +89,7 @@ export function AudioPlayer() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [awaitingUserGesture, setAwaitingUserGesture] = useState(false);
 
   useClickOutside(volumeRef, () => setIsVolumeOpen(false));
 
@@ -165,13 +167,59 @@ export function AudioPlayer() {
     if (enabled) {
       audio
         .play()
-        .then(() => setError(null))
-        .catch(() => {
+        .then(() => {
+          setError(null);
+          setAwaitingUserGesture(false);
+        })
+        .catch((reason) => {
+          const code =
+            typeof (reason as { name?: unknown } | undefined)?.name === "string"
+              ? ((reason as { name: string }).name)
+              : "";
+
+          if (code === "NotAllowedError") {
+            setAwaitingUserGesture(true);
+            setError("Tarayıcı otomatik sesi engelledi. Ekrana bir kez dokununca müzik başlayacak.");
+            return;
+          }
+
           setEnabled(false);
           setError("Müzik başlatılamadı. Dosya adını ve formatını kontrol et.");
         });
     }
   }, [activeTrack, enabled]);
+
+  useEffect(() => {
+    if (!awaitingUserGesture || !enabled) {
+      return;
+    }
+
+    const tryResume = async () => {
+      const audio = audioRef.current;
+      if (!audio) {
+        return;
+      }
+      try {
+        await audio.play();
+        setAwaitingUserGesture(false);
+        setError(null);
+      } catch {
+        // Keep waiting until a valid user gesture succeeds.
+      }
+    };
+
+    const handler = () => {
+      void tryResume();
+    };
+
+    window.addEventListener("pointerdown", handler, { once: true });
+    window.addEventListener("keydown", handler, { once: true });
+
+    return () => {
+      window.removeEventListener("pointerdown", handler);
+      window.removeEventListener("keydown", handler);
+    };
+  }, [awaitingUserGesture, enabled]);
 
   useEffect(() => {
     const audio = audioRef.current;
@@ -190,6 +238,30 @@ export function AudioPlayer() {
     const nextTrack = tracks[nextIndex];
     if (nextTrack) {
       setTrackId(nextTrack.id);
+    }
+  };
+
+  const handleTrackError = () => {
+    const currentTrackId = activeTrack?.id;
+    if (currentTrackId) {
+      failedTrackIdsRef.current.add(currentTrackId);
+    }
+
+    const available = tracks.filter(
+      (track) => !failedTrackIdsRef.current.has(track.id)
+    );
+
+    if (available.length === 0) {
+      setError("Müzik dosyaları açılamadı. `/public/music` içindeki dosyaları kontrol et.");
+      setEnabled(false);
+      return;
+    }
+
+    const fallback = available[0];
+    if (fallback) {
+      setError("Bir parça açılamadı, sonraki parçaya geçildi.");
+      setTrackId(fallback.id);
+      setEnabled(true);
     }
   };
 
@@ -299,7 +371,7 @@ export function AudioPlayer() {
       <audio
         ref={audioRef}
         preload="none"
-        onError={() => setError("Müzik dosyası bulunamadı. İsimleri kontrol et.")}
+        onError={handleTrackError}
       />
     </aside>
   );
