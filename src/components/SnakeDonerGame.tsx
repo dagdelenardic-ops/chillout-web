@@ -43,9 +43,9 @@ type GameState = {
   eventTone: ToneKey | null;
 };
 
-const GRID_COLS = 30;
-const GRID_ROWS = 20;
-const CELL_SIZE = 16;
+const GRID_COLS = 22;
+const GRID_ROWS = 14;
+const CELL_SIZE = 18;
 const BOARD_WIDTH = GRID_COLS * CELL_SIZE;
 const BOARD_HEIGHT = GRID_ROWS * CELL_SIZE;
 const BEST_SCORE_KEY = "snake_doner_best_score_v1";
@@ -197,35 +197,45 @@ function drawFood(ctx: CanvasRenderingContext2D, food: Food) {
   const c = CELL_SIZE;
 
   if (food.type === "simit") {
+    ctx.fillStyle = "#412014";
+    ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
     ctx.fillStyle = "#ce7f2a";
-    ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
+    ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
     ctx.fillStyle = "#7b3c1f";
-    ctx.fillRect(px + 5, py + 5, c - 10, c - 10);
+    ctx.fillRect(px + 6, py + 6, c - 12, c - 12);
     ctx.fillStyle = "#f0cb8e";
-    ctx.fillRect(px + 3, py + 3, c - 6, 2);
+    ctx.fillRect(px + 4, py + 4, c - 8, 2);
     return;
   }
 
   if (food.type === "doner") {
-    ctx.fillStyle = "#6e3a1e";
+    ctx.fillStyle = "#3f2216";
+    ctx.fillRect(px + 2, py + 1, c - 4, c - 2);
+    ctx.fillStyle = "#8e4d2b";
     ctx.fillRect(px + 3, py + 2, c - 6, c - 4);
-    ctx.fillStyle = "#c97531";
+    ctx.fillStyle = "#cb7a36";
     ctx.fillRect(px + 5, py + 4, c - 10, c - 8);
+    ctx.fillStyle = "#6a341e";
+    ctx.fillRect(px + 8, py + 2, 2, c - 4);
     return;
   }
 
   if (food.type === "baklava") {
+    ctx.fillStyle = "#5d4c20";
+    ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
     ctx.fillStyle = "#c8a448";
     ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
     ctx.fillStyle = "#f0d37f";
     ctx.fillRect(px + 5, py + 5, c - 10, c - 10);
     ctx.fillStyle = "#6f5d24";
-    ctx.fillRect(px + 7, py + 1, 2, c - 2);
-    ctx.fillRect(px + 1, py + 7, c - 2, 2);
+    ctx.fillRect(px + 8, py + 2, 2, c - 4);
+    ctx.fillRect(px + 2, py + 8, c - 4, 2);
     return;
   }
 
   if (food.type === "cay") {
+    ctx.fillStyle = "#3d4852";
+    ctx.fillRect(px + 4, py + 1, c - 8, c - 2);
     ctx.fillStyle = "#b01f1f";
     ctx.fillRect(px + 5, py + 4, c - 10, c - 6);
     ctx.fillStyle = "#d8ecf2";
@@ -235,6 +245,8 @@ function drawFood(ctx: CanvasRenderingContext2D, food: Food) {
   }
 
   if (food.type === "ayran") {
+    ctx.fillStyle = "#5f7683";
+    ctx.fillRect(px + 3, py + 3, c - 6, c - 4);
     ctx.fillStyle = "#dfeef3";
     ctx.fillRect(px + 4, py + 4, c - 8, c - 6);
     ctx.fillStyle = "#98b9c8";
@@ -243,6 +255,8 @@ function drawFood(ctx: CanvasRenderingContext2D, food: Food) {
     return;
   }
 
+  ctx.fillStyle = "#2f1d14";
+  ctx.fillRect(px + 3, py + 3, c - 6, c - 5);
   ctx.fillStyle = "#5b3524";
   ctx.fillRect(px + 4, py + 4, c - 8, c - 6);
   ctx.fillStyle = "#9c6a4a";
@@ -255,12 +269,14 @@ function drawNazar(ctx: CanvasRenderingContext2D, point: Point) {
   const px = point.x * CELL_SIZE;
   const py = point.y * CELL_SIZE;
   const c = CELL_SIZE;
+  ctx.fillStyle = "#0b2a63";
+  ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
   ctx.fillStyle = "#123f91";
-  ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
+  ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
   ctx.fillStyle = "#e4f2ff";
-  ctx.fillRect(px + 5, py + 5, c - 10, c - 10);
+  ctx.fillRect(px + 6, py + 6, c - 12, c - 12);
   ctx.fillStyle = "#1e58c2";
-  ctx.fillRect(px + 7, py + 7, c - 14, c - 14);
+  ctx.fillRect(px + 8, py + 8, c - 16, c - 16);
 }
 
 function drawSnake(ctx: CanvasRenderingContext2D, snake: Point[], direction: Direction) {
@@ -272,37 +288,46 @@ function drawSnake(ctx: CanvasRenderingContext2D, snake: Point[], direction: Dir
     const isTail = index === snake.length - 1;
 
     if (isHead) {
-      ctx.fillStyle = "#7a3f22";
+      ctx.fillStyle = "#4f2817";
       ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-      ctx.fillStyle = "#c77734";
-      ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
+      ctx.fillStyle = "#8e4f2b";
+      ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
+      ctx.fillStyle = "#cb7a36";
+      ctx.fillRect(px + 4, py + 3, c - 8, c - 6);
+      ctx.fillStyle = "#f2bf74";
+      ctx.fillRect(px + 4, py + 3, c - 10, 2);
 
       const eyeX =
-        direction.x === 1 ? px + c - 5 : direction.x === -1 ? px + 3 : px + 6;
+        direction.x === 1 ? px + c - 6 : direction.x === -1 ? px + 4 : px + 7;
       const eyeY =
-        direction.y === 1 ? py + c - 5 : direction.y === -1 ? py + 3 : py + 5;
+        direction.y === 1 ? py + c - 6 : direction.y === -1 ? py + 4 : py + 6;
       ctx.fillStyle = "#f1dd79";
       ctx.fillRect(eyeX, eyeY, 3, 3);
+      ctx.fillStyle = "#2a170e";
+      ctx.fillRect(eyeX + 1, eyeY + 1, 1, 1);
 
-      ctx.fillStyle = "#b7b7b7";
+      ctx.fillStyle = "#dadada";
       if (direction.x === 1) {
-        ctx.fillRect(px - 2, py + 6, 3, 4);
+        ctx.fillRect(px - 3, py + 6, 4, 5);
       } else if (direction.x === -1) {
-        ctx.fillRect(px + c - 1, py + 6, 3, 4);
+        ctx.fillRect(px + c - 1, py + 6, 4, 5);
       } else if (direction.y === 1) {
-        ctx.fillRect(px + 6, py - 2, 4, 3);
+        ctx.fillRect(px + 6, py - 3, 5, 4);
       } else {
-        ctx.fillRect(px + 6, py + c - 1, 4, 3);
+        ctx.fillRect(px + 6, py + c - 1, 5, 4);
       }
       return;
     }
 
-    ctx.fillStyle = "#6f381e";
+    ctx.fillStyle = "#4f2817";
     ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-    ctx.fillStyle = index % 2 === 0 ? "#cb7a36" : "#ad5f2b";
-    ctx.fillRect(px + 3, py + 2, c - 6, c - 4);
+    ctx.fillStyle = index % 2 === 0 ? "#cb7a36" : "#b46731";
+    ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
     ctx.fillStyle = "#7d4622";
     ctx.fillRect(px + 7, py + 2, 2, c - 4);
+    ctx.fillRect(px + 11, py + 2, 2, c - 4);
+    ctx.fillStyle = "#f2bf74";
+    ctx.fillRect(px + 3, py + 2, c - 6, 2);
 
     if (isTail) {
       ctx.fillStyle = "#f2d686";
@@ -413,13 +438,18 @@ export function SnakeDonerGame() {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-    for (let y = 0; y < GRID_ROWS; y += 1) {
-      for (let x = 0; x < GRID_COLS; x += 1) {
-        const light = (x + y) % 2 === 0;
-        ctx.fillStyle = light ? "#4e2e1f" : "#442719";
-        ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+      for (let y = 0; y < GRID_ROWS; y += 1) {
+        for (let x = 0; x < GRID_COLS; x += 1) {
+          const laneBand = y % 4 === 1;
+          const light = (x + y) % 2 === 0;
+          ctx.fillStyle = light ? "#4e2e1f" : "#442719";
+          ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+          if (laneBand) {
+            ctx.fillStyle = "rgba(255, 219, 150, 0.08)";
+            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, 1);
+          }
+        }
       }
-    }
 
     if (game.nazar) {
       drawNazar(ctx, game.nazar);
@@ -666,10 +696,11 @@ export function SnakeDonerGame() {
         let nazar = next.nazar;
 
         if (nazar && samePoint(newHead, nazar)) {
-          reverseUntil = now + 4200;
+          speedBoostUntil = Math.max(speedBoostUntil, now + 3600);
+          score += 4;
           nazar = null;
-          line = "Nazar degdi. Kontroller ters!";
-          tone = "danger";
+          line = "Nazar enerjisi. Hizlandin!";
+          tone = "boost";
         }
 
         if (samePoint(newHead, next.food)) {
@@ -797,7 +828,7 @@ export function SnakeDonerGame() {
     <article className="soft-card snake-shell">
       <h2>Yilan Doner</h2>
       <p className="snake-subline">
-        Ok tuslari, WASD, swipe veya asagidaki tuslarla oyna. Duvar var, trafik var.
+        Masaustunde ok/WASD, telefonda swipe ile oyna. Duvar var, trafik var.
       </p>
 
       <section className="snake-stats">
@@ -844,24 +875,6 @@ export function SnakeDonerGame() {
             ) : null}
           </div>
 
-          <div className="snake-dpad" aria-label="Mobil yon tuslari">
-            <button type="button" className="ghost-btn" onClick={() => queueTurn(DIRECTIONS.up)}>
-              ↑
-            </button>
-            <button type="button" className="ghost-btn" onClick={() => queueTurn(DIRECTIONS.left)}>
-              ←
-            </button>
-            <button type="button" className="ghost-btn" onClick={() => queueTurn(DIRECTIONS.down)}>
-              ↓
-            </button>
-            <button
-              type="button"
-              className="ghost-btn"
-              onClick={() => queueTurn(DIRECTIONS.right)}
-            >
-              →
-            </button>
-          </div>
         </div>
 
         <aside className="snake-side">
