@@ -34,7 +34,7 @@ type StoredAudioState = {
 };
 
 const DEFAULT_AUDIO_STATE: StoredAudioState = {
-  enabled: false,
+  enabled: true,
   volume: 0.4,
   trackId: audioTracks[0]?.id ?? "",
 };
@@ -65,10 +65,7 @@ function readStoredAudioState(): StoredAudioState {
         : DEFAULT_AUDIO_STATE.trackId;
 
     return {
-      enabled:
-        typeof parsed.enabled === "boolean"
-          ? parsed.enabled
-          : DEFAULT_AUDIO_STATE.enabled,
+      enabled: true,
       volume:
         typeof parsed.volume === "number"
           ? clampVolume(parsed.volume)

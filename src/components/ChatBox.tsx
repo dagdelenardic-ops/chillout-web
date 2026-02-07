@@ -188,7 +188,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const isFirebaseConfigured = Boolean(services);
   const showTasks = mode === "all" || mode === "tasks";
   const showChat = mode === "all" || mode === "chat";
-  const showAuthControls = mode !== "tasks";
+  const showAuthControls = true;
   const cardTitle =
     showTasks && !showChat ? "Yapılan İşler" : "Dinlen Sohbeti (Tek Oda)";
 
@@ -222,7 +222,10 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
           .map((doc) => {
             const data = doc.data() as Record<string, unknown>;
             const rawKind = asString(data.type).trim();
-            const kind: RoomDocKind = isRoomDocKind(rawKind) ? rawKind : "chat";
+            if (!isRoomDocKind(rawKind)) {
+              return null;
+            }
+            const kind: RoomDocKind = rawKind;
             const createdAtDate = (
               data.createdAt as { toDate?: () => Date } | undefined
             )?.toDate?.() ?? null;
@@ -238,6 +241,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
               createdAtMs: createdAtDate ? createdAtDate.getTime() : 0,
             } satisfies RoomDoc;
           })
+          .filter((item): item is RoomDoc => Boolean(item))
           .sort((a, b) => a.createdAtMs - b.createdAtMs);
 
         setRoomDocs(next);
@@ -251,7 +255,10 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   }, [db]);
 
   const chatMessages = useMemo(
-    () => roomDocs.filter((doc) => doc.kind === "chat"),
+    () =>
+      roomDocs.filter(
+        (doc) => doc.kind === "chat" && doc.text.trim().length > 0
+      ),
     [roomDocs]
   );
 

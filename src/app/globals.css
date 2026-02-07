@@ -74,6 +74,7 @@ a {
 }
 
 .audio-panel-toggle {
+  position: relative;
   border-radius: 999px;
   border: 1px solid rgba(182, 227, 216, 0.34);
   background: rgba(10, 20, 26, 0.72);
@@ -89,6 +90,18 @@ a {
   letter-spacing: 0.01em;
 }
 
+.audio-panel-toggle::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -2px;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(109, 240, 194, 0.95), rgba(109, 240, 194, 0.05));
+  box-shadow: 0 0 10px rgba(109, 240, 194, 0.7);
+}
+
 .audio-panel-toggle svg {
   width: 14px;
   height: 14px;
@@ -100,6 +113,8 @@ a {
 }
 
 .audio-dock-card {
+  position: relative;
+  overflow: hidden;
   border-radius: 999px;
   padding: 8px;
   background: linear-gradient(
@@ -111,6 +126,18 @@ a {
   box-shadow: 0 12px 24px rgba(3, 8, 12, 0.3);
   backdrop-filter: blur(16px);
   width: fit-content;
+}
+
+.audio-dock-card::before {
+  content: "";
+  position: absolute;
+  top: -22px;
+  right: -22px;
+  width: 54px;
+  height: 54px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(109, 240, 194, 0.65), rgba(255, 211, 115, 0.2), rgba(109, 240, 194, 0));
+  pointer-events: none;
 }
 
 .audio-controls-only {
@@ -709,6 +736,18 @@ label {
   font-size: 0.78rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
+}
+
+.roll-title-link {
+  display: inline-block;
+}
+
+.roll-title-link strong {
+  transition: color 0.2s ease;
+}
+
+.roll-title-link:hover strong {
+  color: var(--accent-mint);
 }
 
 .vote-auth-row {

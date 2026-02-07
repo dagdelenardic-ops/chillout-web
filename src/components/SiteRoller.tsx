@@ -317,7 +317,14 @@ export function SiteRoller() {
           return (
             <article className="roll-card" key={site.id}>
               <span className="source">{sourceText[site.source]}</span>
-              <strong>{site.name}</strong>
+              <a
+                href={site.url}
+                target="_blank"
+                rel="noreferrer"
+                className="roll-title-link"
+              >
+                <strong>{site.name}</strong>
+              </a>
               <p className="meta-line">{site.description}</p>
               <div className="vote-bar vote-bar-card">
                 <button
@@ -342,9 +349,6 @@ export function SiteRoller() {
                 </button>
                 <span className="vote-score">Skor: {vote.score}</span>
               </div>
-              <a href={site.url} target="_blank" rel="noreferrer" className="ghost-btn">
-                Siteye Git
-              </a>
             </article>
           );
         })}
