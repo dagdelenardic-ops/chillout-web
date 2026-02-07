@@ -451,19 +451,21 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  const canSendChat = isGoogleUser && chatDraft.trim().length > 0;
+  const canUseGuestMode = guestNameClean.length > 0;
+  const canSendChat =
+    (isGoogleUser || canUseGuestMode) && chatDraft.trim().length > 0;
   const canSendTask = isGoogleUser && taskDraft.trim().length > 0;
 
   const statusText = useMemo(() => {
     if (!user) {
       if (mode === "tasks") {
-        return "İş eklemek için Google ile giriş yap. Yorum için kullanıcı adı yazıp misafir olarak da katılabilirsin.";
+        return "İş eklemek için Google ile giriş yap. Sohbet ve yorum için kullanıcı adıyla misafir olarak katılabilirsin.";
       }
-      return "Google ile giriş yapanlar sohbet ve iş paylaşımı yapar. Giriş olmadan sadece kullanıcı adıyla yorum yazabilirsin.";
+      return "Google ile giriş yapanlar tüm özellikleri kullanır. Giriş olmadan kullanıcı adıyla sohbet ve yorum yapabilirsin.";
     }
 
     if (!isGoogleUser) {
-      return "Misafir modundasın. Sadece yorum yapabilirsin. Sohbet ve iş paylaşımı için Google ile giriş yap.";
+      return "Misafir modundasın. Sohbet ve yorum yapabilirsin. İş paylaşımı ve tamamlandı işaretleme için Google ile giriş yap.";
     }
 
     if (mode === "tasks") {
@@ -579,13 +581,47 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const handleSendChat = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!db || !user || !isGoogleUser) {
-      setError("Genel sohbet için Google ile giriş yap.");
+    if (!db) {
       return;
     }
 
     const cleaned = chatDraft.trim();
     if (!cleaned) {
+      return;
+    }
+
+    let actor = user;
+    let authorName = "";
+
+    if (isGoogleUser && actor) {
+      authorName = getDisplayName(actor);
+    } else {
+      if (!guestNameClean) {
+        setError("Sohbete katılmak için önce kullanıcı adı yaz.");
+        return;
+      }
+
+      authorName = guestNameClean;
+
+      if (!actor) {
+        if (!auth) {
+          setError("Sohbet servisi hazır değil. Sayfayı yenileyip tekrar dene.");
+          return;
+        }
+
+        try {
+          const credential = await signInAnonymously(auth);
+          actor = credential.user;
+        } catch (reason) {
+          const meta = extractErrorMeta(reason);
+          setError(`Misafir sohbeti açılamadı (${meta.code}).`);
+          return;
+        }
+      }
+    }
+
+    if (!actor) {
+      setError("Sohbet mesajı gönderilemedi. Tekrar dene.");
       return;
     }
 
@@ -595,8 +631,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       await addDoc(collection(db, "singleRoomMessages"), {
         type: "chat",
         text: cleaned,
-        uid: user.uid,
-        displayName: getDisplayName(user),
+        uid: actor.uid,
+        displayName: authorName,
         createdAt: serverTimestamp(),
       });
       setChatDraft("");
@@ -864,8 +900,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
             />
           </div>
           <p className="meta-line">
-            Bu modda yalnızca yorum yapabilirsin. Genel sohbet ve iş paylaşımı için
-            Google girişi gerekir.
+            Bu modda sohbet ve yorum yapabilirsin. İş paylaşımı için Google girişi gerekir.
           </p>
         </section>
       ) : null}
@@ -1032,11 +1067,11 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
               placeholder={
                 isGoogleUser
                   ? "Sohbete mesaj yaz..."
-                  : "Mesaj yazmak için Google ile giriş yap..."
+                  : "Misafir sohbeti için üstte kullanıcı adı yaz..."
               }
               value={chatDraft}
               onChange={(event) => setChatDraft(event.target.value)}
-              disabled={!isGoogleUser}
+              disabled={!isGoogleUser && !canUseGuestMode}
               maxLength={240}
             />
             <button type="submit" className="secondary-btn" disabled={!canSendChat}>

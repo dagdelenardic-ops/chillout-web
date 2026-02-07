@@ -39,6 +39,36 @@ const DEFAULT_AUDIO_STATE: StoredAudioState = {
   trackId: audioTracks[0]?.id ?? "",
 };
 
+function pickRandomTrackId(
+  items: AudioTrack[],
+  options?: { excludeId?: string; failedIds?: Set<string> }
+): string | null {
+  const failedIds = options?.failedIds;
+  const excludeId = options?.excludeId;
+  let pool = items;
+
+  if (failedIds && failedIds.size > 0) {
+    const filtered = pool.filter((track) => !failedIds.has(track.id));
+    if (filtered.length > 0) {
+      pool = filtered;
+    }
+  }
+
+  if (excludeId && pool.length > 1) {
+    const filtered = pool.filter((track) => track.id !== excludeId);
+    if (filtered.length > 0) {
+      pool = filtered;
+    }
+  }
+
+  if (pool.length === 0) {
+    return null;
+  }
+
+  const randomIndex = Math.floor(Math.random() * pool.length);
+  return pool[randomIndex]?.id ?? null;
+}
+
 function clampVolume(value: number): number {
   if (Number.isNaN(value)) {
     return 0.4;
@@ -85,7 +115,7 @@ export function AudioPlayer() {
   const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
-  const [trackId, setTrackId] = useState(() => readStoredAudioState().trackId);
+  const [trackId, setTrackId] = useState(() => pickRandomTrackId(audioTracks) ?? "");
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -123,11 +153,12 @@ export function AudioPlayer() {
           file: filePath,
         }));
 
+        failedTrackIdsRef.current.clear();
         setTracks(nextTracks);
-        setTrackId((prev) =>
-          nextTracks.some((track) => track.id === prev)
-            ? prev
-            : (nextTracks[0]?.id ?? "")
+        setTrackId(
+          pickRandomTrackId(nextTracks, {
+            failedIds: failedTrackIdsRef.current,
+          }) ?? (nextTracks[0]?.id ?? "")
         );
       } catch {
         // Keep fallback list when endpoint is unavailable.
@@ -160,7 +191,7 @@ export function AudioPlayer() {
       return;
     }
 
-    audio.loop = true;
+    audio.loop = false;
     audio.src = activeTrack.file;
     audio.load();
 
@@ -183,11 +214,30 @@ export function AudioPlayer() {
             return;
           }
 
-          setEnabled(false);
-          setError("Müzik başlatılamadı. Dosya adını ve formatını kontrol et.");
+          const currentTrackId = activeTrack.id;
+          failedTrackIdsRef.current.add(currentTrackId);
+
+          const nextTrackId =
+            pickRandomTrackId(tracks, {
+              excludeId: currentTrackId,
+              failedIds: failedTrackIdsRef.current,
+            }) ??
+            pickRandomTrackId(tracks, {
+              failedIds: failedTrackIdsRef.current,
+            });
+
+          if (!nextTrackId) {
+            setEnabled(false);
+            setError("Müzik dosyaları açılamadı. `/public/music` içindeki dosyaları kontrol et.");
+            return;
+          }
+
+          setError("Bir parça açılamadı, sonraki parçaya geçildi.");
+          setTrackId(nextTrackId);
+          setEnabled(true);
         });
     }
-  }, [activeTrack, enabled]);
+  }, [activeTrack, enabled, tracks]);
 
   useEffect(() => {
     if (!awaitingUserGesture || !enabled) {
@@ -241,28 +291,67 @@ export function AudioPlayer() {
     }
   };
 
+  const pickNextPlayableTrackId = (excludeTrackId?: string): string | null =>
+    pickRandomTrackId(tracks, {
+      excludeId: excludeTrackId,
+      failedIds: failedTrackIdsRef.current,
+    });
+
+  const handleTrackEnded = () => {
+    const currentTrackId = activeTrack?.id;
+    if (!currentTrackId) {
+      return;
+    }
+
+    const nextTrackId =
+      pickNextPlayableTrackId(currentTrackId) ??
+      pickNextPlayableTrackId();
+
+    if (!nextTrackId) {
+      setError("Çalınabilir parça kalmadı. `/public/music` içindeki dosyaları kontrol et.");
+      setEnabled(false);
+      return;
+    }
+
+    if (nextTrackId === currentTrackId) {
+      const audio = audioRef.current;
+      if (!audio || !enabled) {
+        return;
+      }
+
+      audio.currentTime = 0;
+      audio
+        .play()
+        .then(() => setError(null))
+        .catch(() => {
+          setAwaitingUserGesture(true);
+          setError("Tarayıcı otomatik sesi engelledi. Ekrana bir kez dokununca müzik başlayacak.");
+        });
+      return;
+    }
+
+    setTrackId(nextTrackId);
+  };
+
   const handleTrackError = () => {
     const currentTrackId = activeTrack?.id;
     if (currentTrackId) {
       failedTrackIdsRef.current.add(currentTrackId);
     }
 
-    const available = tracks.filter(
-      (track) => !failedTrackIdsRef.current.has(track.id)
-    );
+    const nextTrackId =
+      pickNextPlayableTrackId(currentTrackId) ??
+      pickNextPlayableTrackId();
 
-    if (available.length === 0) {
+    if (!nextTrackId) {
       setError("Müzik dosyaları açılamadı. `/public/music` içindeki dosyaları kontrol et.");
       setEnabled(false);
       return;
     }
 
-    const fallback = available[0];
-    if (fallback) {
-      setError("Bir parça açılamadı, sonraki parçaya geçildi.");
-      setTrackId(fallback.id);
-      setEnabled(true);
-    }
+    setError("Bir parça açılamadı, sonraki parçaya geçildi.");
+    setTrackId(nextTrackId);
+    setEnabled(true);
   };
 
   const handleToggle = async () => {
@@ -371,6 +460,7 @@ export function AudioPlayer() {
       <audio
         ref={audioRef}
         preload="none"
+        onEnded={handleTrackEnded}
         onError={handleTrackError}
       />
     </aside>
