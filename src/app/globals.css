@@ -341,6 +341,12 @@ a {
   gap: 16px;
 }
 
+.focus-column {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
 .soft-card {
   border-radius: 18px;
   border: 1px solid var(--line-soft);

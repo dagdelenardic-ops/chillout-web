@@ -61,6 +61,12 @@ type TaskCommentView = {
   createdAtMs: number;
 };
 
+type ChatBoxMode = "all" | "tasks" | "chat";
+
+type ChatBoxProps = {
+  mode?: ChatBoxMode;
+};
+
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
@@ -161,7 +167,7 @@ function getDisplayName(user: User | null): string {
   return user.displayName ?? user.email ?? "Anonim";
 }
 
-export function ChatBox() {
+export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const [services, setServices] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
   const [roomDocs, setRoomDocs] = useState<RoomDoc[]>([]);
@@ -180,6 +186,11 @@ export function ChatBox() {
   const auth = services?.auth ?? null;
   const db = services?.db ?? null;
   const isFirebaseConfigured = Boolean(services);
+  const showTasks = mode === "all" || mode === "tasks";
+  const showChat = mode === "all" || mode === "chat";
+  const showAuthControls = mode !== "tasks";
+  const cardTitle =
+    showTasks && !showChat ? "Yapılan İşler" : "Dinlen Sohbeti (Tek Oda)";
 
   useEffect(() => {
     if (!auth) {
@@ -332,11 +343,22 @@ export function ChatBox() {
 
   const statusText = useMemo(() => {
     if (!user) {
+      if (mode === "tasks") {
+        return "İş eklemek ve yorum yapmak için sağdaki sohbet kartından Google ile giriş yap.";
+      }
       return "Google ile giriş yapan herkes anında yazabilir. Katılmak için önce giriş yap.";
     }
 
+    if (mode === "tasks") {
+      return "Yaptığın işi paylaşabilir, bitirdiğinde tamamlandı olarak işaretleyebilirsin.";
+    }
+
+    if (mode === "chat") {
+      return "Google ile giriş yaptın. Genel sohbete anında yazabilirsin.";
+    }
+
     return "Google ile giriş yaptın. Genel sohbete yazabilir, yaptığın işi paylaşabilir, bitince tamamlandı olarak işaretleyebilirsin.";
-  }, [user]);
+  }, [mode, user]);
 
   const handleSetupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -572,10 +594,14 @@ export function ChatBox() {
   if (!isFirebaseConfigured) {
     return (
       <article className="soft-card chat-shell">
-        <h2>Dinlen Sohbeti (Tek Oda)</h2>
+        <h2>{cardTitle}</h2>
         <p>
           Hızlı kurulum: Firebase web uygulama config&apos;ini buraya yapıştır,
-          sohbet ve iş paylaşımı anında aktif olsun.
+          {showTasks && showChat
+            ? "sohbet ve iş paylaşımı anında aktif olsun."
+            : showTasks
+              ? "iş paylaşımı anında aktif olsun."
+              : "sohbet anında aktif olsun."}
         </p>
 
         <form onSubmit={handleSetupSubmit} className="chat-shell">
@@ -594,7 +620,7 @@ export function ChatBox() {
           />
           <div className="inline-controls">
             <button type="submit" className="action-btn">
-              Config Kaydet ve Alanı Aç
+              Config Kaydet ve Bölümü Aç
             </button>
           </div>
         </form>
@@ -611,10 +637,11 @@ export function ChatBox() {
 
   return (
     <article className="soft-card chat-shell">
-      <h2>Dinlen Sohbeti (Tek Oda)</h2>
-      <p>{statusText}</p>
+      <h2>{cardTitle}</h2>
 
-      {services?.source === "runtime" ? (
+      {showAuthControls ? <p>{statusText}</p> : null}
+
+      {showAuthControls && services?.source === "runtime" ? (
         <div className="inline-controls" style={{ justifyContent: "space-between" }}>
           <p className="meta-line" style={{ margin: 0 }}>
             Firebase ayarı tarayıcıda kayıtlı.
@@ -629,186 +656,204 @@ export function ChatBox() {
         </div>
       ) : null}
 
-      <div className="inline-controls">
-        {!user ? (
-          <button
-            type="button"
-            className="action-btn"
-            onClick={handleLogin}
-            disabled={isSigningIn}
-          >
-            {isSigningIn ? "Giriş Yapılıyor..." : "Google ile Giriş Yap"}
-          </button>
-        ) : (
-          <>
-            <p className="meta-line" style={{ margin: 0 }}>
-              Giriş: <strong>{getDisplayName(user)}</strong>
-            </p>
-            <button type="button" className="ghost-btn" onClick={handleLogout}>
-              Çıkış
+      {showAuthControls ? (
+        <div className="inline-controls">
+          {!user ? (
+            <button
+              type="button"
+              className="action-btn"
+              onClick={handleLogin}
+              disabled={isSigningIn}
+            >
+              {isSigningIn ? "Giriş Yapılıyor..." : "Google ile Giriş Yap"}
             </button>
-          </>
-        )}
-      </div>
+          ) : (
+            <>
+              <p className="meta-line" style={{ margin: 0 }}>
+                Giriş: <strong>{getDisplayName(user)}</strong>
+              </p>
+              <button type="button" className="ghost-btn" onClick={handleLogout}>
+                Çıkış
+              </button>
+            </>
+          )}
+        </div>
+      ) : (
+        <p className="meta-line">{statusText}</p>
+      )}
 
-      <section className="task-intake" aria-label="Yapılan işi paylaş">
-        <h3>Ne üzerinde çalışıyorsun?</h3>
-        <form className="chat-form" onSubmit={handleSendTask}>
-          <input
-            type="text"
-            placeholder={
-              user
-                ? "Örn: Gurur Sönmez vibecoding ile jeopolitik harita yapıyor."
-                : "İş paylaşmak için Google ile giriş yap..."
-            }
-            value={taskDraft}
-            onChange={(event) => setTaskDraft(event.target.value)}
-            disabled={!user}
-            maxLength={240}
-          />
-          <button type="submit" className="secondary-btn" disabled={!canSendTask}>
-            Paylaş
-          </button>
-        </form>
-      </section>
+      {showTasks ? (
+        <>
+          <section className="task-intake" aria-label="Yapılan işi paylaş">
+            <h3>Ne üzerinde çalışıyorsun?</h3>
+            <form className="chat-form" onSubmit={handleSendTask}>
+              <input
+                type="text"
+                placeholder={
+                  user
+                    ? "Örn: Gurur Sönmez vibecoding ile jeopolitik harita yapıyor."
+                    : mode === "tasks"
+                      ? "Yazmak için sağdaki sohbet kartından Google ile giriş yap..."
+                      : "İş paylaşmak için Google ile giriş yap..."
+                }
+                value={taskDraft}
+                onChange={(event) => setTaskDraft(event.target.value)}
+                disabled={!user}
+                maxLength={240}
+              />
+              <button type="submit" className="secondary-btn" disabled={!canSendTask}>
+                Paylaş
+              </button>
+            </form>
+          </section>
 
-      <section className="task-stats" aria-label="İş istatistikleri">
-        <span className="stats-pill">
-          Toplam iş: <strong>{stats.totalTasks}</strong>
-        </span>
-        <span className="stats-pill">
-          Tamamlanan iş: <strong>{stats.completedTasks}</strong>
-        </span>
-        <span className="stats-pill">
-          İş bitiren kişi: <strong>{stats.completedUserCount}</strong>
-        </span>
-      </section>
+          <section className="task-stats" aria-label="İş istatistikleri">
+            <span className="stats-pill">
+              Toplam iş: <strong>{stats.totalTasks}</strong>
+            </span>
+            <span className="stats-pill">
+              Tamamlanan iş: <strong>{stats.completedTasks}</strong>
+            </span>
+            <span className="stats-pill">
+              İş bitiren kişi: <strong>{stats.completedUserCount}</strong>
+            </span>
+          </section>
 
-      <section className="task-list" aria-label="Paylaşılan işler">
-        {tasks.length === 0 ? (
-          <p className="meta-line">Henüz iş paylaşılmadı. İlk paylaşımı sen yap.</p>
-        ) : (
-          tasks.map((task) => {
-            const comments = taskCommentsByTask[task.id] ?? [];
-            const canMarkComplete = user?.uid === task.uid && !task.completed;
-            const commentDraft = commentDrafts[task.id] ?? "";
+          <section className="task-list" aria-label="Paylaşılan işler">
+            {tasks.length === 0 ? (
+              <p className="meta-line">Henüz iş paylaşılmadı. İlk paylaşımı sen yap.</p>
+            ) : (
+              tasks.map((task) => {
+                const comments = taskCommentsByTask[task.id] ?? [];
+                const canMarkComplete = user?.uid === task.uid && !task.completed;
+                const commentDraft = commentDrafts[task.id] ?? "";
 
-            return (
-              <article
-                key={task.id}
-                className={`task-card ${task.completed ? "is-completed" : ""}`}
-              >
-                <div className="task-head">
-                  <strong>{task.displayName}</strong>
-                  <span className="meta-line">{task.createdAtLabel}</span>
-                </div>
-
-                <p className="task-text">{task.text}</p>
-
-                <div className="task-status-row">
-                  {task.completed ? (
-                    <span className="task-status done">
-                      ✓ Tamamlandı
-                      {task.completedByName ? ` • ${task.completedByName}` : ""}
-                      {task.completedAtLabel ? ` • ${task.completedAtLabel}` : ""}
-                    </span>
-                  ) : (
-                    <span className="task-status progress">Devam ediyor</span>
-                  )}
-
-                  {canMarkComplete ? (
-                    <button
-                      type="button"
-                      className="ghost-btn"
-                      onClick={() => handleCompleteTask(task)}
-                      disabled={isCompletingTaskId === task.id}
-                    >
-                      {isCompletingTaskId === task.id ? "İşaretleniyor..." : "✓ Tamamlandı"}
-                    </button>
-                  ) : null}
-                </div>
-
-                <div className="task-comments">
-                  <p className="meta-line">Yorumlar</p>
-
-                  {comments.length === 0 ? (
-                    <p className="meta-line">Henüz yorum yok.</p>
-                  ) : (
-                    comments.map((comment) => (
-                      <article key={comment.id} className="task-comment">
-                        <div className="task-comment-head">
-                          <strong>{comment.displayName}</strong>
-                          <span>{comment.createdAtLabel}</span>
-                        </div>
-                        <p>{comment.text}</p>
-                      </article>
-                    ))
-                  )}
-
-                  <form
-                    className="chat-form"
-                    onSubmit={(event) => handleSendComment(event, task.id)}
+                return (
+                  <article
+                    key={task.id}
+                    className={`task-card ${task.completed ? "is-completed" : ""}`}
                   >
-                    <input
-                      type="text"
-                      placeholder={
-                        user ? "Bu işe yorum yaz..." : "Yorum için giriş yap..."
-                      }
-                      value={commentDraft}
-                      onChange={(event) =>
-                        handleCommentDraftChange(task.id, event.target.value)
-                      }
-                      disabled={!user}
-                      maxLength={240}
-                    />
-                    <button
-                      type="submit"
-                      className="secondary-btn"
-                      disabled={!user || commentDraft.trim().length === 0}
-                    >
-                      Yorumla
-                    </button>
-                  </form>
-                </div>
-              </article>
-            );
-          })
-        )}
-      </section>
+                    <div className="task-head">
+                      <strong>{task.displayName}</strong>
+                      <span className="meta-line">{task.createdAtLabel}</span>
+                    </div>
 
-      <h3>Genel Sohbet</h3>
+                    <p className="task-text">{task.text}</p>
 
-      <div className="chat-list" role="log" aria-live="polite">
-        {chatMessages.length === 0 ? (
-          <p className="meta-line">Henüz mesaj yok. İlk mesajı bırakabilirsin.</p>
-        ) : (
-          chatMessages.map((message) => (
-            <article key={message.id} className="chat-message">
-              <strong>
-                {message.displayName} - {message.createdAtLabel}
-              </strong>
-              <p>{message.text}</p>
-            </article>
-          ))
-        )}
-        <div ref={endRef} />
-      </div>
+                    <div className="task-status-row">
+                      {task.completed ? (
+                        <span className="task-status done">
+                          ✓ Tamamlandı
+                          {task.completedByName ? ` • ${task.completedByName}` : ""}
+                          {task.completedAtLabel ? ` • ${task.completedAtLabel}` : ""}
+                        </span>
+                      ) : (
+                        <span className="task-status progress">Devam ediyor</span>
+                      )}
 
-      <form className="chat-form" onSubmit={handleSendChat}>
-        <input
-          type="text"
-          placeholder={
-            user ? "Sohbete mesaj yaz..." : "Mesaj yazmak için Google ile giriş yap..."
-          }
-          value={chatDraft}
-          onChange={(event) => setChatDraft(event.target.value)}
-          disabled={!user}
-          maxLength={240}
-        />
-        <button type="submit" className="secondary-btn" disabled={!canSendChat}>
-          Gönder
-        </button>
-      </form>
+                      {canMarkComplete ? (
+                        <button
+                          type="button"
+                          className="ghost-btn"
+                          onClick={() => handleCompleteTask(task)}
+                          disabled={isCompletingTaskId === task.id}
+                        >
+                          {isCompletingTaskId === task.id ? "İşaretleniyor..." : "✓ Tamamlandı"}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    <div className="task-comments">
+                      <p className="meta-line">Yorumlar</p>
+
+                      {comments.length === 0 ? (
+                        <p className="meta-line">Henüz yorum yok.</p>
+                      ) : (
+                        comments.map((comment) => (
+                          <article key={comment.id} className="task-comment">
+                            <div className="task-comment-head">
+                              <strong>{comment.displayName}</strong>
+                              <span>{comment.createdAtLabel}</span>
+                            </div>
+                            <p>{comment.text}</p>
+                          </article>
+                        ))
+                      )}
+
+                      <form
+                        className="chat-form"
+                        onSubmit={(event) => handleSendComment(event, task.id)}
+                      >
+                        <input
+                          type="text"
+                          placeholder={
+                            user
+                              ? "Bu işe yorum yaz..."
+                              : mode === "tasks"
+                                ? "Yorum için sağdaki sohbet kartından giriş yap..."
+                                : "Yorum için giriş yap..."
+                          }
+                          value={commentDraft}
+                          onChange={(event) =>
+                            handleCommentDraftChange(task.id, event.target.value)
+                          }
+                          disabled={!user}
+                          maxLength={240}
+                        />
+                        <button
+                          type="submit"
+                          className="secondary-btn"
+                          disabled={!user || commentDraft.trim().length === 0}
+                        >
+                          Yorumla
+                        </button>
+                      </form>
+                    </div>
+                  </article>
+                );
+              })
+            )}
+          </section>
+        </>
+      ) : null}
+
+      {showChat ? (
+        <>
+          <h3>Genel Sohbet</h3>
+
+          <div className="chat-list" role="log" aria-live="polite">
+            {chatMessages.length === 0 ? (
+              <p className="meta-line">Henüz mesaj yok. İlk mesajı bırakabilirsin.</p>
+            ) : (
+              chatMessages.map((message) => (
+                <article key={message.id} className="chat-message">
+                  <strong>
+                    {message.displayName} - {message.createdAtLabel}
+                  </strong>
+                  <p>{message.text}</p>
+                </article>
+              ))
+            )}
+            <div ref={endRef} />
+          </div>
+
+          <form className="chat-form" onSubmit={handleSendChat}>
+            <input
+              type="text"
+              placeholder={
+                user ? "Sohbete mesaj yaz..." : "Mesaj yazmak için Google ile giriş yap..."
+              }
+              value={chatDraft}
+              onChange={(event) => setChatDraft(event.target.value)}
+              disabled={!user}
+              maxLength={240}
+            />
+            <button type="submit" className="secondary-btn" disabled={!canSendChat}>
+              Gönder
+            </button>
+          </form>
+        </>
+      ) : null}
 
       {error ? <p className="error-text">{error}</p> : null}
     </article>
