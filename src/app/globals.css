@@ -545,6 +545,131 @@ label {
   gap: 10px;
 }
 
+.task-intake h3 {
+  margin: 0 0 10px;
+}
+
+.task-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.stats-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 11px;
+  border-radius: 999px;
+  border: 1px solid rgba(182, 227, 216, 0.26);
+  background: rgba(10, 20, 26, 0.72);
+  color: var(--ink-soft);
+  font-size: 0.84rem;
+}
+
+.stats-pill strong {
+  color: var(--ink-strong);
+}
+
+.task-list {
+  display: grid;
+  gap: 12px;
+}
+
+.task-card {
+  border-radius: 14px;
+  border: 1px solid rgba(182, 227, 216, 0.2);
+  background: rgba(8, 18, 23, 0.62);
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.task-card.is-completed {
+  border-color: rgba(109, 240, 194, 0.36);
+}
+
+.task-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.task-head strong {
+  color: var(--accent-sun);
+}
+
+.task-text {
+  margin: 0;
+  color: var(--ink-strong);
+  line-height: 1.45;
+}
+
+.task-status-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.task-status {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 0.78rem;
+  border: 1px solid rgba(182, 227, 216, 0.26);
+  background: rgba(12, 22, 28, 0.72);
+}
+
+.task-status.progress {
+  color: var(--ink-soft);
+}
+
+.task-status.done {
+  color: #032b25;
+  background: linear-gradient(90deg, rgba(109, 240, 194, 0.95), rgba(255, 211, 115, 0.95));
+  border-color: transparent;
+}
+
+.task-comments {
+  display: grid;
+  gap: 8px;
+}
+
+.task-comment {
+  border-radius: 11px;
+  border: 1px solid rgba(182, 227, 216, 0.18);
+  background: rgba(9, 18, 23, 0.74);
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+}
+
+.task-comment-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 0.8rem;
+}
+
+.task-comment-head strong {
+  color: var(--accent-mint);
+}
+
+.task-comment-head span {
+  color: var(--ink-muted);
+}
+
+.task-comment p {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
 .roll-highlight {
   border-radius: 16px;
   border: 1px solid rgba(109, 240, 194, 0.35);

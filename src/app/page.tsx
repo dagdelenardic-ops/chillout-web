@@ -4,7 +4,7 @@ import { useState } from "react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { BackgroundVideoWall } from "@/components/BackgroundVideoWall";
 import { ChatBox } from "@/components/ChatBox";
-import { PomodoroTimer, PomodoroPhase } from "@/components/PomodoroTimer";
+import { PomodoroTimer } from "@/components/PomodoroTimer";
 import { SiteRoller } from "@/components/SiteRoller";
 
 type Tab = "pomodoro" | "roller";
@@ -16,8 +16,6 @@ const TAB_LABELS: Record<Tab, string> = {
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<Tab>("roller");
-  const [phase, setPhase] = useState<PomodoroPhase>("focus");
-  const [canWriteInChat, setCanWriteInChat] = useState(false);
 
   return (
     <main className="page-shell">
@@ -44,18 +42,10 @@ export default function Home() {
 
       <section className="panel">
         {activeTab === "pomodoro" ? (
-          <>
-            <div className="pomodoro-grid">
-              <PomodoroTimer
-                onPhaseChange={setPhase}
-                onChatWriteChange={setCanWriteInChat}
-              />
-              <ChatBox
-                isBreakPhase={phase === "break"}
-                canWriteInChat={canWriteInChat}
-              />
-            </div>
-          </>
+          <div className="pomodoro-grid">
+            <PomodoroTimer />
+            <ChatBox />
+          </div>
         ) : null}
 
         {activeTab === "roller" ? <SiteRoller /> : null}

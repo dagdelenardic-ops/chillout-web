@@ -25,18 +25,54 @@ import {
   parseFirebaseConfigInput,
 } from "@/lib/firebase";
 
-type ChatMessage = {
+type RoomDocKind = "chat" | "task" | "task_comment" | "task_complete";
+
+type RoomDoc = {
+  id: string;
+  kind: RoomDocKind;
+  text: string;
+  uid: string;
+  displayName: string;
+  taskId: string | null;
+  createdAtLabel: string;
+  createdAtMs: number;
+};
+
+type TaskView = {
   id: string;
   text: string;
   uid: string;
   displayName: string;
   createdAtLabel: string;
+  createdAtMs: number;
+  completed: boolean;
+  completedAtLabel: string | null;
+  completedByName: string | null;
+  completedByUid: string | null;
 };
 
-type ChatBoxProps = {
-  isBreakPhase: boolean;
-  canWriteInChat: boolean;
+type TaskCommentView = {
+  id: string;
+  taskId: string;
+  text: string;
+  uid: string;
+  displayName: string;
+  createdAtLabel: string;
+  createdAtMs: number;
 };
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function isRoomDocKind(value: string): value is RoomDocKind {
+  return (
+    value === "chat" ||
+    value === "task" ||
+    value === "task_comment" ||
+    value === "task_complete"
+  );
+}
 
 function extractErrorMeta(reason: unknown): { code: string; message: string } {
   if (typeof reason === "string") {
@@ -87,7 +123,10 @@ function authHelpText(code: string, fallbackMessage: string): string {
     return "Aynı anda birden fazla popup isteği başladı. Bir kez tıklayıp bekle.";
   }
 
-  return fallbackMessage || "Firebase ayarlarını (Auth + Domain + env) kontrol edip tekrar dene.";
+  return (
+    fallbackMessage ||
+    "Firebase ayarlarını (Auth + Domain + env) kontrol edip tekrar dene."
+  );
 }
 
 function formatApiKeyHint(apiKey: string | undefined): string {
@@ -102,21 +141,37 @@ function formatApiKeyHint(apiKey: string | undefined): string {
 
 function formatCreatedAt(value: Date | null): string {
   if (!value) {
-    return "şimdi";
+    return "az önce";
   }
 
   return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(value);
 }
 
-export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
+function getDisplayName(user: User | null): string {
+  if (!user) {
+    return "Anonim";
+  }
+
+  return user.displayName ?? user.email ?? "Anonim";
+}
+
+export function ChatBox() {
   const [services, setServices] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [draft, setDraft] = useState("");
+  const [roomDocs, setRoomDocs] = useState<RoomDoc[]>([]);
+  const [chatDraft, setChatDraft] = useState("");
+  const [taskDraft, setTaskDraft] = useState("");
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [isCompletingTaskId, setIsCompletingTaskId] = useState<string | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
   const [setupDraft, setSetupDraft] = useState("");
   const [setupError, setSetupError] = useState<string | null>(null);
@@ -146,7 +201,7 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
     const roomQuery = query(
       collection(db, "singleRoomMessages"),
       orderBy("createdAt", "desc"),
-      limit(80)
+      limit(500)
     );
 
     const unsubscribe = onSnapshot(
@@ -154,46 +209,134 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
       (snapshot) => {
         const next = snapshot.docs
           .map((doc) => {
-            const data = doc.data();
-            const createdAt = data.createdAt?.toDate?.() ?? null;
+            const data = doc.data() as Record<string, unknown>;
+            const rawKind = asString(data.type).trim();
+            const kind: RoomDocKind = isRoomDocKind(rawKind) ? rawKind : "chat";
+            const createdAtDate = (
+              data.createdAt as { toDate?: () => Date } | undefined
+            )?.toDate?.() ?? null;
+
             return {
               id: doc.id,
-              text: (data.text as string) ?? "",
-              uid: (data.uid as string) ?? "",
-              displayName: (data.displayName as string) ?? "Anonim",
-              createdAtLabel: formatCreatedAt(createdAt),
-            };
+              kind,
+              text: asString(data.text),
+              uid: asString(data.uid),
+              displayName: asString(data.displayName) || "Anonim",
+              taskId: asString(data.taskId) || null,
+              createdAtLabel: formatCreatedAt(createdAtDate),
+              createdAtMs: createdAtDate ? createdAtDate.getTime() : 0,
+            } satisfies RoomDoc;
           })
-          .reverse();
+          .sort((a, b) => a.createdAtMs - b.createdAtMs);
 
-        setMessages(next);
+        setRoomDocs(next);
       },
       () => {
-        setError("Mesajlar alınamadı. Firestore izinlerini kontrol et.");
+        setError("Veriler alınamadı. Firestore izinlerini kontrol et.");
       }
     );
 
     return () => unsubscribe();
   }, [db]);
 
+  const chatMessages = useMemo(
+    () => roomDocs.filter((doc) => doc.kind === "chat"),
+    [roomDocs]
+  );
+
+  const taskCommentsByTask = useMemo(() => {
+    const grouped: Record<string, TaskCommentView[]> = {};
+
+    roomDocs
+      .filter((doc) => doc.kind === "task_comment" && Boolean(doc.taskId))
+      .forEach((doc) => {
+        const taskId = doc.taskId;
+        if (!taskId) {
+          return;
+        }
+
+        if (!grouped[taskId]) {
+          grouped[taskId] = [];
+        }
+
+        grouped[taskId].push({
+          id: doc.id,
+          taskId,
+          text: doc.text,
+          uid: doc.uid,
+          displayName: doc.displayName,
+          createdAtLabel: doc.createdAtLabel,
+          createdAtMs: doc.createdAtMs,
+        });
+      });
+
+    Object.values(grouped).forEach((items) => {
+      items.sort((a, b) => a.createdAtMs - b.createdAtMs);
+    });
+
+    return grouped;
+  }, [roomDocs]);
+
+  const tasks = useMemo(() => {
+    const completionByTaskId = new Map<string, RoomDoc>();
+
+    roomDocs
+      .filter((doc) => doc.kind === "task_complete" && Boolean(doc.taskId))
+      .forEach((doc) => {
+        const taskId = doc.taskId;
+        if (!taskId || completionByTaskId.has(taskId)) {
+          return;
+        }
+        completionByTaskId.set(taskId, doc);
+      });
+
+    return roomDocs
+      .filter((doc) => doc.kind === "task")
+      .map((task) => {
+        const completion = completionByTaskId.get(task.id);
+        return {
+          id: task.id,
+          text: task.text,
+          uid: task.uid,
+          displayName: task.displayName,
+          createdAtLabel: task.createdAtLabel,
+          createdAtMs: task.createdAtMs,
+          completed: Boolean(completion),
+          completedAtLabel: completion?.createdAtLabel ?? null,
+          completedByName: completion?.displayName ?? null,
+          completedByUid: completion?.uid ?? null,
+        } satisfies TaskView;
+      })
+      .sort((a, b) => b.createdAtMs - a.createdAtMs);
+  }, [roomDocs]);
+
+  const stats = useMemo(() => {
+    const completed = tasks.filter((task) => task.completed);
+    const finishedByUsers = new Set(
+      completed.map((task) => task.completedByUid || task.uid)
+    );
+
+    return {
+      totalTasks: tasks.length,
+      completedTasks: completed.length,
+      completedUserCount: finishedByUsers.size,
+    };
+  }, [tasks]);
+
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [chatMessages]);
 
-  const canSend = Boolean(user) && canWriteInChat && draft.trim().length > 0;
+  const canSendChat = Boolean(user) && chatDraft.trim().length > 0;
+  const canSendTask = Boolean(user) && taskDraft.trim().length > 0;
 
   const statusText = useMemo(() => {
     if (!user) {
-      return "Mesaj göndermek için Google ile giriş yap.";
+      return "Google ile giriş yapan herkes anında yazabilir. Katılmak için önce giriş yap.";
     }
-    if (canWriteInChat) {
-      return "Dinlenme süresi aktif. Bu 5 dakika boyunca sohbet alanına mesaj yazabilirsin.";
-    }
-    if (isBreakPhase) {
-      return "Dinlenme penceresi kapandı. Yeniden yazmak için pomodoroyu başlatıp bir sonraki dinlenme süresine geç.";
-    }
-    return "Sohbet mesajları herkese açık görünür. Yazmak için pomodoroyu başlat ve dinlenme modunu bekle.";
-  }, [canWriteInChat, isBreakPhase, user]);
+
+    return "Google ile giriş yaptın. Genel sohbete yazabilir, yaptığın işi paylaşabilir, bitince tamamlandı olarak işaretleyebilirsin.";
+  }, [user]);
 
   const handleSetupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -230,7 +373,10 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
     window.localStorage.removeItem(FIREBASE_RUNTIME_STORAGE_KEY);
     setServices(getFirebaseServices());
     setUser(null);
-    setMessages([]);
+    setRoomDocs([]);
+    setChatDraft("");
+    setTaskDraft("");
+    setCommentDrafts({});
     setSetupDraft("");
     setSetupError(null);
     setIsSigningIn(false);
@@ -269,6 +415,7 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
           return;
         }
       }
+
       const keyHint = formatApiKeyHint(services?.config.apiKey);
       const sourceHint = services?.source ?? "bilinmiyor";
       setError(
@@ -290,21 +437,14 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
     await signOut(auth);
   };
 
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+  const handleSendChat = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!db || !user) {
       return;
     }
 
-    if (!canWriteInChat) {
-      setError(
-        "Mesaj gönderme şu an kapalı. Yazmak için pomodoroyu başlatıp dinlenme süresine geç."
-      );
-      return;
-    }
-
-    const cleaned = draft.trim();
+    const cleaned = chatDraft.trim();
     if (!cleaned) {
       return;
     }
@@ -313,14 +453,119 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
 
     try {
       await addDoc(collection(db, "singleRoomMessages"), {
+        type: "chat",
         text: cleaned,
         uid: user.uid,
-        displayName: user.displayName ?? "Anonim",
+        displayName: getDisplayName(user),
         createdAt: serverTimestamp(),
       });
-      setDraft("");
+      setChatDraft("");
     } catch {
-      setError("Mesaj gönderilemedi. Firestore yazma izinlerini kontrol et.");
+      setError("Sohbet mesajı gönderilemedi. Firestore izinlerini kontrol et.");
+    }
+  };
+
+  const handleSendTask = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!db || !user) {
+      return;
+    }
+
+    const cleaned = taskDraft.trim();
+    if (!cleaned) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await addDoc(collection(db, "singleRoomMessages"), {
+        type: "task",
+        text: cleaned,
+        uid: user.uid,
+        displayName: getDisplayName(user),
+        createdAt: serverTimestamp(),
+      });
+      setTaskDraft("");
+    } catch {
+      setError("İş paylaşımı gönderilemedi. Firestore izinlerini kontrol et.");
+    }
+  };
+
+  const handleCommentDraftChange = (taskId: string, value: string) => {
+    setCommentDrafts((prev) => ({
+      ...prev,
+      [taskId]: value,
+    }));
+  };
+
+  const handleSendComment = async (
+    event: FormEvent<HTMLFormElement>,
+    taskId: string
+  ) => {
+    event.preventDefault();
+
+    if (!db || !user) {
+      return;
+    }
+
+    const cleaned = (commentDrafts[taskId] ?? "").trim();
+    if (!cleaned) {
+      return;
+    }
+
+    setError(null);
+
+    try {
+      await addDoc(collection(db, "singleRoomMessages"), {
+        type: "task_comment",
+        taskId,
+        text: cleaned,
+        uid: user.uid,
+        displayName: getDisplayName(user),
+        createdAt: serverTimestamp(),
+      });
+
+      setCommentDrafts((prev) => ({
+        ...prev,
+        [taskId]: "",
+      }));
+    } catch {
+      setError("Yorum gönderilemedi. Firestore izinlerini kontrol et.");
+    }
+  };
+
+  const handleCompleteTask = async (task: TaskView) => {
+    if (!db || !user) {
+      return;
+    }
+
+    if (task.completed) {
+      return;
+    }
+
+    if (task.uid !== user.uid) {
+      setError("Bu işi yalnızca paylaşan kişi tamamlandı olarak işaretleyebilir.");
+      return;
+    }
+
+    setError(null);
+    setIsCompletingTaskId(task.id);
+
+    try {
+      await addDoc(collection(db, "singleRoomMessages"), {
+        type: "task_complete",
+        taskId: task.id,
+        text: "Tamamlandı",
+        uid: user.uid,
+        displayName: getDisplayName(user),
+        createdAt: serverTimestamp(),
+      });
+    } catch {
+      setError("İş tamamlandı olarak işaretlenemedi. Firestore izinlerini kontrol et.");
+    } finally {
+      setIsCompletingTaskId(null);
     }
   };
 
@@ -330,7 +575,7 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
         <h2>Dinlen Sohbeti (Tek Oda)</h2>
         <p>
           Hızlı kurulum: Firebase web uygulama config&apos;ini buraya yapıştır,
-          sohbet anında aktif olsun.
+          sohbet ve iş paylaşımı anında aktif olsun.
         </p>
 
         <form onSubmit={handleSetupSubmit} className="chat-shell">
@@ -349,7 +594,7 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
           />
           <div className="inline-controls">
             <button type="submit" className="action-btn">
-              Config Kaydet ve Sohbeti Aç
+              Config Kaydet ve Alanı Aç
             </button>
           </div>
         </form>
@@ -397,7 +642,7 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
         ) : (
           <>
             <p className="meta-line" style={{ margin: 0 }}>
-              Giriş: <strong>{user.displayName ?? user.email}</strong>
+              Giriş: <strong>{getDisplayName(user)}</strong>
             </p>
             <button type="button" className="ghost-btn" onClick={handleLogout}>
               Çıkış
@@ -406,11 +651,138 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
         )}
       </div>
 
+      <section className="task-intake" aria-label="Yapılan işi paylaş">
+        <h3>Ne üzerinde çalışıyorsun?</h3>
+        <form className="chat-form" onSubmit={handleSendTask}>
+          <input
+            type="text"
+            placeholder={
+              user
+                ? "Örn: Gurur Sönmez vibecoding ile jeopolitik harita yapıyor."
+                : "İş paylaşmak için Google ile giriş yap..."
+            }
+            value={taskDraft}
+            onChange={(event) => setTaskDraft(event.target.value)}
+            disabled={!user}
+            maxLength={240}
+          />
+          <button type="submit" className="secondary-btn" disabled={!canSendTask}>
+            Paylaş
+          </button>
+        </form>
+      </section>
+
+      <section className="task-stats" aria-label="İş istatistikleri">
+        <span className="stats-pill">
+          Toplam iş: <strong>{stats.totalTasks}</strong>
+        </span>
+        <span className="stats-pill">
+          Tamamlanan iş: <strong>{stats.completedTasks}</strong>
+        </span>
+        <span className="stats-pill">
+          İş bitiren kişi: <strong>{stats.completedUserCount}</strong>
+        </span>
+      </section>
+
+      <section className="task-list" aria-label="Paylaşılan işler">
+        {tasks.length === 0 ? (
+          <p className="meta-line">Henüz iş paylaşılmadı. İlk paylaşımı sen yap.</p>
+        ) : (
+          tasks.map((task) => {
+            const comments = taskCommentsByTask[task.id] ?? [];
+            const canMarkComplete = user?.uid === task.uid && !task.completed;
+            const commentDraft = commentDrafts[task.id] ?? "";
+
+            return (
+              <article
+                key={task.id}
+                className={`task-card ${task.completed ? "is-completed" : ""}`}
+              >
+                <div className="task-head">
+                  <strong>{task.displayName}</strong>
+                  <span className="meta-line">{task.createdAtLabel}</span>
+                </div>
+
+                <p className="task-text">{task.text}</p>
+
+                <div className="task-status-row">
+                  {task.completed ? (
+                    <span className="task-status done">
+                      ✓ Tamamlandı
+                      {task.completedByName ? ` • ${task.completedByName}` : ""}
+                      {task.completedAtLabel ? ` • ${task.completedAtLabel}` : ""}
+                    </span>
+                  ) : (
+                    <span className="task-status progress">Devam ediyor</span>
+                  )}
+
+                  {canMarkComplete ? (
+                    <button
+                      type="button"
+                      className="ghost-btn"
+                      onClick={() => handleCompleteTask(task)}
+                      disabled={isCompletingTaskId === task.id}
+                    >
+                      {isCompletingTaskId === task.id ? "İşaretleniyor..." : "✓ Tamamlandı"}
+                    </button>
+                  ) : null}
+                </div>
+
+                <div className="task-comments">
+                  <p className="meta-line">Yorumlar</p>
+
+                  {comments.length === 0 ? (
+                    <p className="meta-line">Henüz yorum yok.</p>
+                  ) : (
+                    comments.map((comment) => (
+                      <article key={comment.id} className="task-comment">
+                        <div className="task-comment-head">
+                          <strong>{comment.displayName}</strong>
+                          <span>{comment.createdAtLabel}</span>
+                        </div>
+                        <p>{comment.text}</p>
+                      </article>
+                    ))
+                  )}
+
+                  <form
+                    className="chat-form"
+                    onSubmit={(event) => handleSendComment(event, task.id)}
+                  >
+                    <input
+                      type="text"
+                      placeholder={
+                        user ? "Bu işe yorum yaz..." : "Yorum için giriş yap..."
+                      }
+                      value={commentDraft}
+                      onChange={(event) =>
+                        handleCommentDraftChange(task.id, event.target.value)
+                      }
+                      disabled={!user}
+                      maxLength={240}
+                    />
+                    <button
+                      type="submit"
+                      className="secondary-btn"
+                      disabled={!user || commentDraft.trim().length === 0}
+                    >
+                      Yorumla
+                    </button>
+                  </form>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </section>
+
+      <h3>Genel Sohbet</h3>
+
       <div className="chat-list" role="log" aria-live="polite">
-        {messages.length === 0 ? (
+        {chatMessages.length === 0 ? (
           <p className="meta-line">Henüz mesaj yok. İlk mesajı bırakabilirsin.</p>
         ) : (
-          messages.map((message) => (
+          chatMessages.map((message) => (
             <article key={message.id} className="chat-message">
               <strong>
                 {message.displayName} - {message.createdAtLabel}
@@ -422,22 +794,18 @@ export function ChatBox({ isBreakPhase, canWriteInChat }: ChatBoxProps) {
         <div ref={endRef} />
       </div>
 
-      <form className="chat-form" onSubmit={handleSubmit}>
+      <form className="chat-form" onSubmit={handleSendChat}>
         <input
           type="text"
           placeholder={
-            !user
-              ? "Mesaj yazmak için giriş yap..."
-              : canWriteInChat
-                ? "Mesajını yaz..."
-                : "Pomodoroyu başlat, dinlenme modunda yaz..."
+            user ? "Sohbete mesaj yaz..." : "Mesaj yazmak için Google ile giriş yap..."
           }
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          disabled={!user || !canWriteInChat}
+          value={chatDraft}
+          onChange={(event) => setChatDraft(event.target.value)}
+          disabled={!user}
           maxLength={240}
         />
-        <button type="submit" className="secondary-btn" disabled={!canSend}>
+        <button type="submit" className="secondary-btn" disabled={!canSendChat}>
           Gönder
         </button>
       </form>
