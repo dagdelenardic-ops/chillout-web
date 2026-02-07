@@ -10,21 +10,23 @@ import {
 import { SiteSource } from "@/types/site";
 import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect } from "firebase/auth";
 import {
+  addDoc,
   collection,
-  deleteDoc,
-  doc,
+  limit,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
-  setDoc,
 } from "firebase/firestore";
 
 type SourceFilter = SiteSource | "all";
-type VoteValue = -1 | 1;
+type VoteValue = -1 | 0 | 1;
 
-type SiteVoteDoc = {
+type SiteVoteEvent = {
   siteId: string;
   uid: string;
   value: VoteValue;
+  createdAtMs: number;
 };
 
 type SiteVoteSummary = {
@@ -58,7 +60,7 @@ function asString(value: unknown): string {
 }
 
 function asVoteValue(value: unknown): VoteValue | null {
-  if (value === 1 || value === -1) {
+  if (value === 1 || value === -1 || value === 0) {
     return value;
   }
 
@@ -70,7 +72,7 @@ export function SiteRoller() {
   const [selectedId, setSelectedId] = useState<string>(discoverySites[0]?.id ?? "");
   const [services] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
-  const [votes, setVotes] = useState<SiteVoteDoc[]>([]);
+  const [voteEvents, setVoteEvents] = useState<SiteVoteEvent[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isVoting, setIsVoting] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
@@ -95,24 +97,42 @@ export function SiteRoller() {
       return;
     }
 
+    const votesQuery = query(
+      collection(db, "singleRoomMessages"),
+      orderBy("createdAt", "desc"),
+      limit(5000)
+    );
+
     const unsubscribe = onSnapshot(
-      collection(db, "siteVotes"),
+      votesQuery,
       (snapshot) => {
         const nextVotes = snapshot.docs
           .map((siteVoteDoc) => {
             const data = siteVoteDoc.data() as Record<string, unknown>;
+            if (asString(data.type) !== "site_vote") {
+              return null;
+            }
             const siteId = asString(data.siteId);
             const uid = asString(data.uid);
             const value = asVoteValue(data.value);
-            if (!siteId || !uid || !value) {
+            const createdAtDate = (
+              data.createdAt as { toDate?: () => Date } | undefined
+            )?.toDate?.();
+            if (!siteId || !uid || value === null) {
               return null;
             }
 
-            return { siteId, uid, value } satisfies SiteVoteDoc;
+            return {
+              siteId,
+              uid,
+              value,
+              createdAtMs: createdAtDate ? createdAtDate.getTime() : 0,
+            } satisfies SiteVoteEvent;
           })
-          .filter((item): item is SiteVoteDoc => Boolean(item));
+          .filter((item): item is SiteVoteEvent => Boolean(item))
+          .sort((a, b) => a.createdAtMs - b.createdAtMs);
 
-        setVotes(nextVotes);
+        setVoteEvents(nextVotes);
       },
       () => {
         setError("Site oylamaları alınamadı. Firestore izinlerini kontrol et.");
@@ -129,7 +149,17 @@ export function SiteRoller() {
       summary.set(site.id, { likes: 0, dislikes: 0, score: 0, myVote: 0 });
     });
 
-    votes.forEach((vote) => {
+    const latestByUserSite = new Map<string, SiteVoteEvent>();
+
+    voteEvents.forEach((voteEvent) => {
+      const key = `${voteEvent.uid}__${voteEvent.siteId}`;
+      const prev = latestByUserSite.get(key);
+      if (!prev || prev.createdAtMs <= voteEvent.createdAtMs) {
+        latestByUserSite.set(key, voteEvent);
+      }
+    });
+
+    latestByUserSite.forEach((vote) => {
       if (!summary.has(vote.siteId)) {
         return;
       }
@@ -141,7 +171,7 @@ export function SiteRoller() {
 
       if (vote.value === 1) {
         current.likes += 1;
-      } else {
+      } else if (vote.value === -1) {
         current.dislikes += 1;
       }
 
@@ -153,7 +183,7 @@ export function SiteRoller() {
     });
 
     return summary;
-  }, [votes, user]);
+  }, [voteEvents, user]);
 
   const filteredSites = useMemo(() => {
     const pool =
@@ -226,22 +256,21 @@ export function SiteRoller() {
     }
 
     const currentVote = voteSummaryBySite.get(siteId)?.myVote ?? 0;
-    const voteDocRef = doc(db, "siteVotes", `${siteId}_${user.uid}`);
+    const nextValue: VoteValue = currentVote === value ? 0 : value;
     setError(null);
     setIsVoting(true);
 
     try {
-      if (currentVote === value) {
-        await deleteDoc(voteDocRef);
-      } else {
-        await setDoc(voteDocRef, {
-          siteId,
-          uid: user.uid,
-          displayName: getDisplayName(user),
-          value,
-          updatedAt: serverTimestamp(),
-        });
-      }
+      await addDoc(collection(db, "singleRoomMessages"), {
+        type: "site_vote",
+        text: "",
+        taskId: null,
+        siteId,
+        uid: user.uid,
+        displayName: getDisplayName(user),
+        value: nextValue,
+        createdAt: serverTimestamp(),
+      });
     } catch {
       setError("Oy gönderilemedi. Bağlantıyı kontrol edip tekrar dene.");
     } finally {
@@ -299,7 +328,10 @@ export function SiteRoller() {
       </div>
 
       <div className="vote-auth-row">
-        <p className="meta-line">Sıralama global like/dislike skoruna göre canlı güncellenir.</p>
+        <p className="meta-line">
+          Sıralama global like/dislike skoruna göre canlı güncellenir. Aynı emojiye tekrar
+          basarsan oyun kaldırılır.
+        </p>
         {user ? (
           <p className="meta-line">Oy veriyorsun: {getDisplayName(user)}</p>
         ) : (
