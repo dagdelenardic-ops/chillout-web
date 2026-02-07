@@ -49,6 +49,13 @@ const CELL_SIZE = 18;
 const BOARD_WIDTH = GRID_COLS * CELL_SIZE;
 const BOARD_HEIGHT = GRID_ROWS * CELL_SIZE;
 const BEST_SCORE_KEY = "snake_doner_best_score_v1";
+const GROUND_DARK = "#122832";
+const GROUND_MID = "#183544";
+const GROUND_LINE = "rgba(109, 240, 194, 0.12)";
+const SNAKE_DARK = "#572513";
+const SNAKE_MID = "#b95a28";
+const SNAKE_LIGHT = "#f4ad5c";
+const SNAKE_HOT = "#ffd990";
 
 const FOOD_META: Record<
   FoodType,
@@ -288,20 +295,25 @@ function drawSnake(ctx: CanvasRenderingContext2D, snake: Point[], direction: Dir
     const isTail = index === snake.length - 1;
 
     if (isHead) {
-      ctx.fillStyle = "#4f2817";
+      ctx.fillStyle = "rgba(5, 10, 13, 0.22)";
+      ctx.fillRect(px + 2, py + c - 2, c - 4, 2);
+
+      ctx.fillStyle = SNAKE_DARK;
       ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
       ctx.fillStyle = "#8e4f2b";
       ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
-      ctx.fillStyle = "#cb7a36";
+      ctx.fillStyle = SNAKE_MID;
       ctx.fillRect(px + 4, py + 3, c - 8, c - 6);
-      ctx.fillStyle = "#f2bf74";
+      ctx.fillStyle = SNAKE_LIGHT;
       ctx.fillRect(px + 4, py + 3, c - 10, 2);
+      ctx.fillStyle = SNAKE_HOT;
+      ctx.fillRect(px + 5, py + 5, c - 12, 1);
 
       const eyeX =
         direction.x === 1 ? px + c - 6 : direction.x === -1 ? px + 4 : px + 7;
       const eyeY =
         direction.y === 1 ? py + c - 6 : direction.y === -1 ? py + 4 : py + 6;
-      ctx.fillStyle = "#f1dd79";
+      ctx.fillStyle = "#ffeab4";
       ctx.fillRect(eyeX, eyeY, 3, 3);
       ctx.fillStyle = "#2a170e";
       ctx.fillRect(eyeX + 1, eyeY + 1, 1, 1);
@@ -319,20 +331,26 @@ function drawSnake(ctx: CanvasRenderingContext2D, snake: Point[], direction: Dir
       return;
     }
 
-    ctx.fillStyle = "#4f2817";
+    ctx.fillStyle = "rgba(5, 10, 13, 0.2)";
+    ctx.fillRect(px + 2, py + c - 2, c - 4, 2);
+
+    ctx.fillStyle = SNAKE_DARK;
     ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-    ctx.fillStyle = index % 2 === 0 ? "#cb7a36" : "#b46731";
+    ctx.fillStyle = index % 2 === 0 ? SNAKE_MID : "#a85223";
     ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
-    ctx.fillStyle = "#7d4622";
-    ctx.fillRect(px + 7, py + 2, 2, c - 4);
-    ctx.fillRect(px + 11, py + 2, 2, c - 4);
-    ctx.fillStyle = "#f2bf74";
+    ctx.fillStyle = "#6e3a1c";
+    ctx.fillRect(px + 6, py + 2, 2, c - 4);
+    ctx.fillRect(px + 10, py + 2, 2, c - 4);
+    ctx.fillStyle = SNAKE_LIGHT;
     ctx.fillRect(px + 3, py + 2, c - 6, 2);
+    ctx.fillStyle = SNAKE_HOT;
+    ctx.fillRect(px + 4, py + 4, c - 10, 1);
 
     if (isTail) {
-      ctx.fillStyle = "#f2d686";
+      ctx.fillStyle = "#f0d08a";
       ctx.fillRect(px + 5, py + c - 2, 5, 2);
       ctx.fillRect(px + 6, py + c, 2, 2);
+      ctx.fillRect(px + 8, py + c + 1, 1, 2);
     }
   });
 }
@@ -438,18 +456,31 @@ export function SnakeDonerGame() {
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-      for (let y = 0; y < GRID_ROWS; y += 1) {
-        for (let x = 0; x < GRID_COLS; x += 1) {
-          const laneBand = y % 4 === 1;
-          const light = (x + y) % 2 === 0;
-          ctx.fillStyle = light ? "#4e2e1f" : "#442719";
-          ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, CELL_SIZE);
-          if (laneBand) {
-            ctx.fillStyle = "rgba(255, 219, 150, 0.08)";
-            ctx.fillRect(x * CELL_SIZE, y * CELL_SIZE, CELL_SIZE, 1);
-          }
+    for (let y = 0; y < GRID_ROWS; y += 1) {
+      for (let x = 0; x < GRID_COLS; x += 1) {
+        const laneBand = y % 4 === 1;
+        const light = (x + y) % 2 === 0;
+        const px = x * CELL_SIZE;
+        const py = y * CELL_SIZE;
+
+        ctx.fillStyle = light ? GROUND_MID : GROUND_DARK;
+        ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
+
+        if (laneBand) {
+          ctx.fillStyle = "rgba(255, 211, 115, 0.08)";
+          ctx.fillRect(px, py + 2, CELL_SIZE, 1);
+        }
+
+        if (x % 5 === 0) {
+          ctx.fillStyle = GROUND_LINE;
+          ctx.fillRect(px, py, 1, CELL_SIZE);
         }
       }
+    }
+
+    ctx.fillStyle = "rgba(4, 9, 12, 0.18)";
+    ctx.fillRect(0, 0, BOARD_WIDTH, 10);
+    ctx.fillRect(0, BOARD_HEIGHT - 10, BOARD_WIDTH, 10);
 
     if (game.nazar) {
       drawNazar(ctx, game.nazar);
