@@ -594,6 +594,12 @@ label {
   gap: 8px;
 }
 
+.guest-name-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+}
+
 .task-intake h3 {
   margin: 0 0 10px;
 }
@@ -941,6 +947,10 @@ label {
 
   .roll-grid {
     grid-template-columns: 1fr;
+  }
+
+  .guest-name-row {
+    grid-template-columns: 1fr auto;
   }
 
   .vote-bar {

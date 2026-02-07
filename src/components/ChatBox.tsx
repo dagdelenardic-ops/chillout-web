@@ -1,6 +1,7 @@
 "use client";
 
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { Check } from "lucide-react";
 import {
   User,
   onAuthStateChanged,
@@ -17,6 +18,8 @@ import {
   orderBy,
   query,
   serverTimestamp,
+  Timestamp,
+  where,
 } from "firebase/firestore";
 import {
   FIREBASE_RUNTIME_STORAGE_KEY,
@@ -268,6 +271,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const [taskDraft, setTaskDraft] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const [guestName, setGuestName] = useState("");
+  const [isGuestNameLocked, setIsGuestNameLocked] = useState(false);
+  const [chatVisibleCount, setChatVisibleCount] = useState(6);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isCompletingTaskId, setIsCompletingTaskId] = useState<string | null>(
     null
@@ -308,9 +313,27 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     }
 
     const stored = window.localStorage.getItem(GUEST_NAME_STORAGE_KEY) ?? "";
-    const cleaned = stored.trim().slice(0, 40);
-    if (cleaned) {
-      setGuestName(cleaned);
+    const cleaned = stored.trim();
+    if (cleaned.startsWith("{")) {
+      try {
+        const parsed = JSON.parse(cleaned) as { name?: unknown; locked?: unknown };
+        const name =
+          typeof parsed.name === "string" ? parsed.name.trim().slice(0, 40) : "";
+        const locked = parsed.locked === true;
+        if (name) {
+          setGuestName(name);
+          setIsGuestNameLocked(locked);
+        }
+        return;
+      } catch {
+        window.localStorage.removeItem(GUEST_NAME_STORAGE_KEY);
+      }
+    }
+
+    const legacyName = cleaned.slice(0, 40);
+    if (legacyName) {
+      setGuestName(legacyName);
+      setIsGuestNameLocked(true);
     }
   }, []);
 
@@ -324,16 +347,24 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       return;
     }
 
-    window.localStorage.setItem(GUEST_NAME_STORAGE_KEY, guestNameClean);
-  }, [guestNameClean]);
+    window.localStorage.setItem(
+      GUEST_NAME_STORAGE_KEY,
+      JSON.stringify({
+        name: guestNameClean,
+        locked: isGuestNameLocked,
+      })
+    );
+  }, [guestNameClean, isGuestNameLocked]);
 
   useEffect(() => {
     if (!db) {
       return;
     }
 
+    const cutoffTimestamp = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
     const roomQuery = query(
       collection(db, "singleRoomMessages"),
+      where("createdAt", ">=", cutoffTimestamp),
       orderBy("createdAt", "desc"),
       limit(500)
     );
@@ -466,12 +497,20 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [chatMessages]);
+  }, [chatMessages.length, chatVisibleCount]);
 
-  const canUseGuestMode = guestNameClean.length > 0;
+  const canUseGuestMode = isGuestNameLocked && guestNameClean.length > 0;
   const canSendChat =
     (isGoogleUser || canUseGuestMode) && chatDraft.trim().length > 0;
   const canSendTask = isGoogleUser && taskDraft.trim().length > 0;
+  const visibleChatMessages = useMemo(() => {
+    if (chatMessages.length <= chatVisibleCount) {
+      return chatMessages;
+    }
+
+    return chatMessages.slice(chatMessages.length - chatVisibleCount);
+  }, [chatMessages, chatVisibleCount]);
+  const hiddenChatMessageCount = Math.max(0, chatMessages.length - visibleChatMessages.length);
 
   const statusText = useMemo(() => {
     if (!user) {
@@ -613,8 +652,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     if (isGoogleUser && actor) {
       authorName = getDisplayName(actor);
     } else {
-      if (!guestNameClean) {
-        setError("Sohbete katılmak için önce kullanıcı adı yaz.");
+      if (!canUseGuestMode) {
+        setError("Sohbete katılmak için önce kullanıcı adını yazıp ✓ ile onayla.");
         return;
       }
 
@@ -700,6 +739,18 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     }));
   };
 
+  const handleConfirmGuestName = () => {
+    const cleaned = guestNameClean.slice(0, 40);
+    if (cleaned.length < 2) {
+      setError("Kullanıcı adı en az 2 karakter olmalı.");
+      return;
+    }
+
+    setGuestName(cleaned);
+    setIsGuestNameLocked(true);
+    setError(null);
+  };
+
   const handleSendComment = async (
     event: FormEvent<HTMLFormElement>,
     taskId: string
@@ -721,8 +772,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     if (isGoogleUser && actor) {
       authorName = getDisplayName(actor);
     } else {
-      if (!guestNameClean) {
-        setError("Yorum için önce kullanıcı adı yaz.");
+      if (!canUseGuestMode) {
+        setError("Yorum için önce kullanıcı adını yazıp ✓ ile onayla.");
         return;
       }
 
@@ -909,19 +960,41 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
       {!isGoogleUser ? (
         <section className="guest-name-box" aria-label="Misafir yorum adı">
-          <label htmlFor="guest-name-input">Giriş yapmadan yorum için kullanıcı adı</label>
-          <div className="chat-form">
+          <label htmlFor="guest-name-input">Misafir kullanıcı adı</label>
+          <div className="guest-name-row">
             <input
               id="guest-name-input"
               type="text"
               value={guestName}
               onChange={(event) => setGuestName(event.target.value.slice(0, 40))}
               placeholder="Örn: Gurur"
+              disabled={isGuestNameLocked}
               maxLength={40}
             />
+            <button
+              type="button"
+              className="secondary-btn"
+              onClick={handleConfirmGuestName}
+              disabled={isGuestNameLocked || guestNameClean.length < 2}
+              aria-label="Kullanıcı adını onayla"
+              title="Kullanıcı adını onayla"
+            >
+              <Check size={16} aria-hidden="true" />
+            </button>
+            {isGuestNameLocked ? (
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() => setIsGuestNameLocked(false)}
+              >
+                Düzenle
+              </button>
+            ) : null}
           </div>
           <p className="meta-line">
-            Bu modda sohbet ve yorum yapabilirsin. İş paylaşımı için Google girişi gerekir.
+            {isGuestNameLocked
+              ? `Nick onaylandı: ${guestNameClean}. Bu modda sohbet ve yorum yapabilirsin.`
+              : "Nickini yazıp ✓ ile onayla. Sonra sohbet ve yorum yapabilirsin."} İş paylaşımı için Google girişi gerekir.
           </p>
         </section>
       ) : null}
@@ -974,7 +1047,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                 const commentDraft = commentDrafts[task.id] ?? "";
                 const canCommentSubmit =
                   commentDraft.trim().length > 0 &&
-                  (isGoogleUser || guestNameClean.length > 0);
+                  (isGoogleUser || canUseGuestMode);
 
                 return (
                   <article
@@ -1037,7 +1110,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                           placeholder={
                             isGoogleUser
                               ? "Bu işe yorum yaz..."
-                              : "Yorum yaz. Göndermek için üstte kullanıcı adı gir..."
+                              : "Yorum yaz. Göndermek için üstte nick yazıp ✓ ile onayla..."
                           }
                           value={commentDraft}
                           onChange={(event) =>
@@ -1065,12 +1138,15 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       {showChat ? (
         <>
           <h3>Genel Sohbet</h3>
+          <p className="meta-line">
+            Son 24 saatin sohbeti gösterilir. Varsayılan görünüm: son 6 mesaj.
+          </p>
 
           <div className="chat-list" role="log" aria-live="polite">
             {chatMessages.length === 0 ? (
               <p className="meta-line">Henüz mesaj yok. İlk mesajı bırakabilirsin.</p>
             ) : (
-              chatMessages.map((message) => (
+              visibleChatMessages.map((message) => (
                 <article key={message.id} className="chat-message">
                   <strong>
                     {message.displayName} - {message.createdAtLabel}
@@ -1082,13 +1158,27 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
             <div ref={endRef} />
           </div>
 
+          {hiddenChatMessageCount > 0 ? (
+            <div className="inline-controls">
+              <button
+                type="button"
+                className="ghost-btn"
+                onClick={() =>
+                  setChatVisibleCount((prev) => Math.min(prev + 6, chatMessages.length))
+                }
+              >
+                Daha eski 6 mesajı göster
+              </button>
+            </div>
+          ) : null}
+
           <form className="chat-form" onSubmit={handleSendChat}>
             <input
               type="text"
               placeholder={
                 isGoogleUser
                   ? "Sohbete mesaj yaz..."
-                  : "Misafir sohbeti için üstte kullanıcı adı yaz..."
+                  : "Misafir sohbeti için üstte nick yazıp ✓ ile onayla..."
               }
               value={chatDraft}
               onChange={(event) => setChatDraft(event.target.value)}
