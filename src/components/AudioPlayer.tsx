@@ -13,6 +13,18 @@ import {
 } from "lucide-react";
 import { AudioTrack, audioTracks } from "@/data/audioTracks";
 
+function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClickOutside: () => void) {
+  useEffect(() => {
+    function handleClick(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        onClickOutside();
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, [ref, onClickOutside]);
+}
+
 const AUDIO_STATE_KEY = "chillout_audio_state_v1";
 
 type StoredAudioState = {
@@ -71,6 +83,7 @@ function readStoredAudioState(): StoredAudioState {
 
 export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const volumeRef = useRef<HTMLDivElement>(null);
   const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
   const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
   const [volume, setVolume] = useState(() => readStoredAudioState().volume);
@@ -78,6 +91,8 @@ export function AudioPlayer() {
   const [isPanelOpen, setIsPanelOpen] = useState(false);
   const [isVolumeOpen, setIsVolumeOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useClickOutside(volumeRef, () => setIsVolumeOpen(false));
 
   const activeTrack = useMemo(
     () => tracks.find((track) => track.id === trackId) ?? tracks[0],
@@ -260,19 +275,23 @@ export function AudioPlayer() {
             </button>
 
             {isVolumeOpen ? (
-              <label className="audio-intensity" htmlFor="audio-volume-slider">
-                <span className="sr-only">Müzik şiddeti</span>
-                <input
-                  id="audio-volume-slider"
-                  className="audio-intensity-slider"
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={volume}
-                  onChange={(event) => setVolume(clampVolume(Number(event.target.value)))}
-                />
-              </label>
+              <div ref={volumeRef} className="audio-intensity-wrap">
+                <label className="audio-intensity" htmlFor="audio-volume-slider">
+                  <span className="sr-only">Müzik şiddeti</span>
+                  <input
+                    id="audio-volume-slider"
+                    className="audio-intensity-slider"
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    value={volume}
+                    onChange={(event) => setVolume(clampVolume(Number(event.target.value)))}
+                    onMouseUp={() => setIsVolumeOpen(false)}
+                    onTouchEnd={() => setIsVolumeOpen(false)}
+                  />
+                </label>
+              </div>
             ) : null}
           </div>
 

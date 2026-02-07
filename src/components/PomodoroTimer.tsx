@@ -87,40 +87,46 @@ export function PomodoroTimer({
     return Math.max(0, Math.min(100, ((total - secondsLeft) / total) * 100));
   }, [phase, secondsLeft]);
 
+  const circumference = 2 * Math.PI * 120;
+  const strokeDashoffset = circumference - (progress / 100) * circumference;
+
   return (
-    <article className="soft-card">
-      <span className={`pill ${phase === "break" ? "break" : ""}`}>
-        {phase === "focus" ? "Odak Modu - 25 dk" : "Dinlenme Modu - 5 dk"}
-      </span>
-      <h2>Klasik Pomodoro</h2>
-      <p>
-        25 dakika odak ve 5 dakika dinlenme akışı çalışır. Mesaj yazma hakkı
-        yalnızca dinlenme süresinde açıktır. Dinlenme bitince sohbet yazma alanı
-        kilitlenir; yeniden yazmak için pomodoroyu tekrar başlatmalısın.
-      </p>
-
-      <p className="kpi">{formatTime(secondsLeft)}</p>
-
-      <div
-        style={{
-          height: 8,
-          borderRadius: 999,
-          background: "rgba(190,225,218,0.18)",
-          overflow: "hidden",
-          marginBottom: 14,
-        }}
-      >
-        <div
-          style={{
-            width: `${progress}%`,
-            height: "100%",
-            background:
-              phase === "focus"
-                ? "linear-gradient(90deg, #70f2c6, #ffd36d)"
-                : "linear-gradient(90deg, #ffd36d, #ffa17a)",
-            transition: "width 0.9s linear",
-          }}
-        />
+    <article className="soft-card pomodoro-card">
+      <div className="pomodoro-circle-wrap">
+        <svg className="pomodoro-ring" viewBox="0 0 260 260">
+          <defs>
+            <linearGradient id="gradient-focus" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#70f2c6" />
+              <stop offset="100%" stopColor="#ffd36d" />
+            </linearGradient>
+            <linearGradient id="gradient-break" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#ffd36d" />
+              <stop offset="100%" stopColor="#ffa17a" />
+            </linearGradient>
+          </defs>
+          <circle
+            className="ring-bg"
+            cx="130"
+            cy="130"
+            r="120"
+          />
+          <circle
+            className={`ring-progress ${phase}`}
+            cx="130"
+            cy="130"
+            r="120"
+            style={{
+              strokeDasharray: circumference,
+              strokeDashoffset: strokeDashoffset,
+            }}
+          />
+        </svg>
+        <div className="pomodoro-center">
+          <span className="pomodoro-time">{formatTime(secondsLeft)}</span>
+          <span className={`pomodoro-phase ${phase}`}>
+            {phase === "focus" ? "Odak" : "Dinlenme"}
+          </span>
+        </div>
       </div>
 
       <div className="player-controls">
@@ -131,7 +137,6 @@ export function PomodoroTimer({
         >
           {isRunning ? "Duraklat" : "Başlat"}
         </button>
-
         <button type="button" className="secondary-btn" onClick={handleReset}>
           Sıfırla
         </button>

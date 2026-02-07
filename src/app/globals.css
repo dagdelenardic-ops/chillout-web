@@ -592,11 +592,6 @@ label {
     gap: 14px;
   }
 
-  .hero-actions .action-btn,
-  .hero-actions .secondary-btn {
-    width: 100%;
-  }
-
   .tab-nav {
     overflow-x: auto;
     flex-wrap: nowrap;
@@ -721,5 +716,110 @@ label {
   .video-backdrop::before,
   .video-backdrop-media {
     animation: none;
+  }
+}
+
+/* Pomodoro Circular Progress */
+.pomodoro-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 24px;
+  padding: 28px;
+}
+
+.pomodoro-circle-wrap {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+.pomodoro-ring {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg);
+}
+
+.ring-bg {
+  fill: none;
+  stroke: rgba(182, 227, 216, 0.12);
+  stroke-width: 10;
+}
+
+.ring-progress {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
+}
+
+.ring-progress.focus {
+  stroke: url(#gradient-focus);
+}
+
+.ring-progress.break {
+  stroke: url(#gradient-break);
+}
+
+.pomodoro-center {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pomodoro-time {
+  font-family: var(--font-display), serif;
+  font-size: 3.2rem;
+  font-weight: 600;
+  color: var(--ink-strong);
+  letter-spacing: -0.02em;
+}
+
+.pomodoro-phase {
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.pomodoro-phase.focus {
+  color: var(--accent-mint);
+}
+
+.pomodoro-phase.break {
+  color: var(--accent-sun);
+}
+
+/* SVG Gradients */
+.pomodoro-ring defs {
+  display: none;
+}
+
+/* Add gradient support via CSS fallback */
+.ring-progress.focus {
+  stroke: var(--accent-mint);
+}
+
+.ring-progress.break {
+  stroke: var(--accent-sun);
+}
+
+@media (max-width: 640px) {
+  .pomodoro-circle-wrap {
+    width: 240px;
+    height: 240px;
+  }
+  
+  .pomodoro-time {
+    font-size: 2.6rem;
+  }
+  
+  .pomodoro-card {
+    padding: 20px;
   }
 }

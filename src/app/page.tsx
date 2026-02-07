@@ -6,22 +6,18 @@ import { BackgroundVideoWall } from "@/components/BackgroundVideoWall";
 import { ChatBox } from "@/components/ChatBox";
 import { PomodoroTimer, PomodoroPhase } from "@/components/PomodoroTimer";
 import { SiteRoller } from "@/components/SiteRoller";
-import { discoverySites } from "@/data/discoverySites";
 
-type Tab = "chill" | "pomodoro" | "roller";
+type Tab = "pomodoro" | "roller";
 
 const TAB_LABELS: Record<Tab, string> = {
-  chill: "Chill Alanı",
-  pomodoro: "Pomodoro + Dinlen",
-  roller: "İlginç Sitelerde Yuvarlan",
+  pomodoro: "Pomodoro",
+  roller: "Keşfet",
 };
 
 export default function Home() {
-  const [activeTab, setActiveTab] = useState<Tab>("chill");
+  const [activeTab, setActiveTab] = useState<Tab>("roller");
   const [phase, setPhase] = useState<PomodoroPhase>("focus");
   const [canWriteInChat, setCanWriteInChat] = useState(false);
-
-  const featured = discoverySites.slice(0, 4);
 
   return (
     <main className="page-shell">
@@ -29,28 +25,8 @@ export default function Home() {
       <AudioPlayer />
 
       <header className="hero">
-        <p className="hero-chip">Chillout Hub</p>
-        <h1>Canı sıkılanlar için rahatlatıcı dijital mola alanı</h1>
-        <p className="hero-sub">
-          Arka planda döngülü müzik, klasik 25/5 pomodoro, dinlenme modunda
-          Google login ile tek odalı sohbet ve rastgele ilginç siteler.
-        </p>
-        <div className="hero-actions">
-          <button
-            type="button"
-            className="action-btn"
-            onClick={() => setActiveTab("pomodoro")}
-          >
-            Dinlen Sohbetine Git
-          </button>
-          <button
-            type="button"
-            className="secondary-btn"
-            onClick={() => setActiveTab("roller")}
-          >
-            Rastgele Site Keşfet
-          </button>
-        </div>
+        <h1>Dinlenme köşesi</h1>
+        <p className="hero-sub">Müzik dinle, odaklan, keşfet.</p>
       </header>
 
       <nav className="tab-nav" aria-label="Sayfa sekmeleri">
@@ -67,47 +43,8 @@ export default function Home() {
       </nav>
 
       <section className="panel">
-        {activeTab === "chill" ? (
-          <div className="chill-grid">
-            <article className="soft-card">
-              <h2>Müzik Kontrolü Her Yerde Aktif</h2>
-              <p>
-                Alttaki sabit oynatıcı tüm sekmelerde açık kalır. Parça değiştir,
-                sesi ayarla ve sayfalar arasında gezerken müzik kesilmeden devam etsin.
-              </p>
-            </article>
-            <article className="soft-card">
-              <h2>Bugünün Kafa Dağıtma Önerileri</h2>
-              <p>
-                Bunlar doğrudan gezinebileceğin sitelerden seçilen minik
-                sürprizler.
-              </p>
-              <div className="list-grid">
-                {featured.map((site) => (
-                  <a
-                    className="suggestion-link"
-                    key={site.id}
-                    href={site.url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    <strong>{site.name}</strong>
-                    <span>{site.description}</span>
-                  </a>
-                ))}
-              </div>
-            </article>
-          </div>
-        ) : null}
-
         {activeTab === "pomodoro" ? (
           <>
-            <article className="chat-banner">
-              Genel sohbet herkes tarafından görünür. Mesaj yazma yalnızca
-              pomodoro başlatıldıktan sonra 5 dakikalık dinlenme süresinde
-              açılır. Süre bitince yazma kilitlenir; tekrar yazmak için pomodoroyu
-              yeniden başlatman gerekir.
-            </article>
             <div className="pomodoro-grid">
               <PomodoroTimer
                 onPhaseChange={setPhase}

@@ -76,18 +76,6 @@ export function SiteRoller() {
           <option value="eksi">{sourceText.eksi}</option>
           <option value="global">{sourceText.global}</option>
         </select>
-
-        <button type="button" className="action-btn" onClick={rollSite}>
-          Rastgele Seç
-        </button>
-        <button
-          type="button"
-          className="link-btn"
-          onClick={openCurrent}
-          disabled={!selectedSite}
-        >
-          Seçili Siteyi Aç
-        </button>
       </div>
 
       {selectedSite ? (
@@ -98,6 +86,19 @@ export function SiteRoller() {
             Ruh hali: {VIBE_LABELS[selectedSite.vibe]} | Kaynak:{" "}
             {sourceText[selectedSite.source]}
           </p>
+          <div className="roll-actions" style={{ marginTop: 16, display: "flex", gap: 10 }}>
+            <button type="button" className="action-btn" onClick={rollSite}>
+              Rastgele Seç
+            </button>
+            <button
+              type="button"
+              className="link-btn"
+              onClick={openCurrent}
+              disabled={!selectedSite}
+            >
+              Seçili Siteyi Aç
+            </button>
+          </div>
         </section>
       ) : null}
 

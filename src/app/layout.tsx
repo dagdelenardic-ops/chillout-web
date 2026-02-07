@@ -15,9 +15,8 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  title: "Chillout Hub",
-  description:
-    "Müzik, 25/5 pomodoro, dinlenme sohbeti ve rastgele ilginç web siteleri ile kafa dağıtma platformu.",
+  title: "Chillout",
+  description: "Müzik, odaklanma ve keşif.",
 };
 
 export default function RootLayout({
