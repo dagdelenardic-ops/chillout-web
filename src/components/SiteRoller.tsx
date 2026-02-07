@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { discoverySites, sourceText } from "@/data/discoverySites";
+import { ThumbsDown, ThumbsUp } from "lucide-react";
 import {
   getFirebaseServices,
   googleProvider,
@@ -36,17 +37,6 @@ type SiteVoteSummary = {
   myVote: VoteValue | 0;
 };
 
-const VIBE_LABELS = {
-  rahatlatici: "Rahatlatıcı",
-  sasirtici: "Şaşırtıcı",
-  oyunlu: "Oyunlu",
-  kesif: "Keşif",
-} as const;
-
-function pickRandom<T>(items: T[]): T {
-  return items[Math.floor(Math.random() * items.length)];
-}
-
 function getDisplayName(user: User | null): string {
   if (!user) {
     return "Anonim";
@@ -69,7 +59,6 @@ function asVoteValue(value: unknown): VoteValue | null {
 
 export function SiteRoller() {
   const [filter, setFilter] = useState<SourceFilter>("all");
-  const [selectedId, setSelectedId] = useState<string>(discoverySites[0]?.id ?? "");
   const [services] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
   const [voteEvents, setVoteEvents] = useState<SiteVoteEvent[]>([]);
@@ -217,38 +206,6 @@ export function SiteRoller() {
     });
   }, [filter, voteSummaryBySite]);
 
-  useEffect(() => {
-    if (filteredSites.length === 0) {
-      setSelectedId("");
-      return;
-    }
-
-    const exists = filteredSites.some((site) => site.id === selectedId);
-    if (!exists) {
-      setSelectedId(filteredSites[0].id);
-    }
-  }, [filteredSites, selectedId]);
-
-  const selectedSite =
-    filteredSites.find((site) => site.id === selectedId) ?? filteredSites[0];
-
-  const rollSite = () => {
-    if (filteredSites.length === 0) {
-      return;
-    }
-
-    const random = pickRandom(filteredSites);
-    setSelectedId(random.id);
-  };
-
-  const openCurrent = () => {
-    if (!selectedSite) {
-      return;
-    }
-
-    window.open(selectedSite.url, "_blank", "noopener,noreferrer");
-  };
-
   const voteForSite = async (siteId: string, value: VoteValue) => {
     if (!db || !auth || !user) {
       setError("Oy vermek için Google ile giriş yap.");
@@ -310,8 +267,8 @@ export function SiteRoller() {
     <article className="soft-card">
       <h2>İlginç Sitelerde Yuvarlan</h2>
       <p>
-        Ekşi listesinden ve global seçimlerden derlenen siteler. Rastgele seç,
-        yeni bir sekmede aç ve yoluna devam et.
+        Ekşi listesinden ve global seçimlerden derlenen siteler. Puanı yüksek
+        olanlar üstte görünür.
       </p>
 
       <div className="inline-controls" style={{ marginBottom: 12 }}>
@@ -346,53 +303,6 @@ export function SiteRoller() {
         )}
       </div>
 
-      {selectedSite ? (
-        <section className="roll-highlight" aria-live="polite">
-          <h3>{selectedSite.name}</h3>
-          <p>{selectedSite.description}</p>
-          <p className="meta-line">
-            Ruh hali: {VIBE_LABELS[selectedSite.vibe]} | Kaynak:{" "}
-            {sourceText[selectedSite.source]}
-          </p>
-          <div className="vote-bar">
-            <button
-              type="button"
-              className={`vote-btn ${voteSummaryBySite.get(selectedSite.id)?.myVote === 1 ? "active-like" : ""}`}
-              onClick={() => voteForSite(selectedSite.id, 1)}
-              disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
-              aria-label={`${selectedSite.name} beğen`}
-            >
-              👍 {voteSummaryBySite.get(selectedSite.id)?.likes ?? 0}
-            </button>
-            <button
-              type="button"
-              className={`vote-btn ${voteSummaryBySite.get(selectedSite.id)?.myVote === -1 ? "active-dislike" : ""}`}
-              onClick={() => voteForSite(selectedSite.id, -1)}
-              disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
-              aria-label={`${selectedSite.name} beğenme`}
-            >
-              👎 {voteSummaryBySite.get(selectedSite.id)?.dislikes ?? 0}
-            </button>
-            <span className="vote-score">
-              Skor: {voteSummaryBySite.get(selectedSite.id)?.score ?? 0}
-            </span>
-          </div>
-          <div className="roll-actions" style={{ marginTop: 16, display: "flex", gap: 10 }}>
-            <button type="button" className="action-btn" onClick={rollSite}>
-              Rastgele Seç
-            </button>
-            <button
-              type="button"
-              className="link-btn"
-              onClick={openCurrent}
-              disabled={!selectedSite}
-            >
-              Seçili Siteyi Aç
-            </button>
-          </div>
-        </section>
-      ) : null}
-
       {error ? <p className="note-warn">{error}</p> : null}
 
       <div className="roll-grid">
@@ -417,7 +327,8 @@ export function SiteRoller() {
                   disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
                   aria-label={`${site.name} beğen`}
                 >
-                  👍 {vote.likes}
+                  <ThumbsUp size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{vote.likes}</span>
                 </button>
                 <button
                   type="button"
@@ -426,7 +337,8 @@ export function SiteRoller() {
                   disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
                   aria-label={`${site.name} beğenme`}
                 >
-                  👎 {vote.dislikes}
+                  <ThumbsDown size={14} strokeWidth={1.8} aria-hidden="true" />
+                  <span>{vote.dislikes}</span>
                 </button>
                 <span className="vote-score">Skor: {vote.score}</span>
               </div>
