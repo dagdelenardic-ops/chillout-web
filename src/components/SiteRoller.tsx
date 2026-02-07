@@ -1,10 +1,38 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { discoverySites, sourceText } from "@/data/discoverySites";
+import {
+  getFirebaseServices,
+  googleProvider,
+  isCompleteFirebaseConfig,
+} from "@/lib/firebase";
 import { SiteSource } from "@/types/site";
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect } from "firebase/auth";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  onSnapshot,
+  serverTimestamp,
+  setDoc,
+} from "firebase/firestore";
 
 type SourceFilter = SiteSource | "all";
+type VoteValue = -1 | 1;
+
+type SiteVoteDoc = {
+  siteId: string;
+  uid: string;
+  value: VoteValue;
+};
+
+type SiteVoteSummary = {
+  likes: number;
+  dislikes: number;
+  score: number;
+  myVote: VoteValue | 0;
+};
 
 const VIBE_LABELS = {
   rahatlatici: "Rahatlatıcı",
@@ -17,17 +45,159 @@ function pickRandom<T>(items: T[]): T {
   return items[Math.floor(Math.random() * items.length)];
 }
 
+function getDisplayName(user: User | null): string {
+  if (!user) {
+    return "Anonim";
+  }
+
+  return user.displayName ?? user.email ?? "Anonim";
+}
+
+function asString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+function asVoteValue(value: unknown): VoteValue | null {
+  if (value === 1 || value === -1) {
+    return value;
+  }
+
+  return null;
+}
+
 export function SiteRoller() {
   const [filter, setFilter] = useState<SourceFilter>("all");
+  const [selectedId, setSelectedId] = useState<string>(discoverySites[0]?.id ?? "");
+  const [services] = useState(() => getFirebaseServices());
+  const [user, setUser] = useState<User | null>(null);
+  const [votes, setVotes] = useState<SiteVoteDoc[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [isVoting, setIsVoting] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  const auth = services?.auth ?? null;
+  const db = services?.db ?? null;
+
+  useEffect(() => {
+    if (!auth) {
+      return;
+    }
+
+    const unsubscribe = onAuthStateChanged(auth, (nextUser) => {
+      setUser(nextUser);
+    });
+
+    return () => unsubscribe();
+  }, [auth]);
+
+  useEffect(() => {
+    if (!db) {
+      return;
+    }
+
+    const unsubscribe = onSnapshot(
+      collection(db, "siteVotes"),
+      (snapshot) => {
+        const nextVotes = snapshot.docs
+          .map((siteVoteDoc) => {
+            const data = siteVoteDoc.data() as Record<string, unknown>;
+            const siteId = asString(data.siteId);
+            const uid = asString(data.uid);
+            const value = asVoteValue(data.value);
+            if (!siteId || !uid || !value) {
+              return null;
+            }
+
+            return { siteId, uid, value } satisfies SiteVoteDoc;
+          })
+          .filter((item): item is SiteVoteDoc => Boolean(item));
+
+        setVotes(nextVotes);
+      },
+      () => {
+        setError("Site oylamaları alınamadı. Firestore izinlerini kontrol et.");
+      }
+    );
+
+    return () => unsubscribe();
+  }, [db]);
+
+  const voteSummaryBySite = useMemo(() => {
+    const summary = new Map<string, SiteVoteSummary>();
+
+    discoverySites.forEach((site) => {
+      summary.set(site.id, { likes: 0, dislikes: 0, score: 0, myVote: 0 });
+    });
+
+    votes.forEach((vote) => {
+      if (!summary.has(vote.siteId)) {
+        return;
+      }
+
+      const current = summary.get(vote.siteId);
+      if (!current) {
+        return;
+      }
+
+      if (vote.value === 1) {
+        current.likes += 1;
+      } else {
+        current.dislikes += 1;
+      }
+
+      if (user && vote.uid === user.uid) {
+        current.myVote = vote.value;
+      }
+
+      current.score = current.likes - current.dislikes;
+    });
+
+    return summary;
+  }, [votes, user]);
 
   const filteredSites = useMemo(() => {
-    if (filter === "all") {
-      return discoverySites;
-    }
-    return discoverySites.filter((site) => site.source === filter);
-  }, [filter]);
+    const pool =
+      filter === "all"
+        ? discoverySites
+        : discoverySites.filter((site) => site.source === filter);
 
-  const [selectedId, setSelectedId] = useState<string>(discoverySites[0]?.id ?? "");
+    return [...pool].sort((left, right) => {
+      const leftVote = voteSummaryBySite.get(left.id) ?? {
+        likes: 0,
+        dislikes: 0,
+        score: 0,
+        myVote: 0,
+      };
+      const rightVote = voteSummaryBySite.get(right.id) ?? {
+        likes: 0,
+        dislikes: 0,
+        score: 0,
+        myVote: 0,
+      };
+
+      if (rightVote.score !== leftVote.score) {
+        return rightVote.score - leftVote.score;
+      }
+
+      if (rightVote.likes !== leftVote.likes) {
+        return rightVote.likes - leftVote.likes;
+      }
+
+      return left.name.localeCompare(right.name, "tr");
+    });
+  }, [filter, voteSummaryBySite]);
+
+  useEffect(() => {
+    if (filteredSites.length === 0) {
+      setSelectedId("");
+      return;
+    }
+
+    const exists = filteredSites.some((site) => site.id === selectedId);
+    if (!exists) {
+      setSelectedId(filteredSites[0].id);
+    }
+  }, [filteredSites, selectedId]);
 
   const selectedSite =
     filteredSites.find((site) => site.id === selectedId) ?? filteredSites[0];
@@ -49,6 +219,64 @@ export function SiteRoller() {
     window.open(selectedSite.url, "_blank", "noopener,noreferrer");
   };
 
+  const voteForSite = async (siteId: string, value: VoteValue) => {
+    if (!db || !auth || !user) {
+      setError("Oy vermek için Google ile giriş yap.");
+      return;
+    }
+
+    const currentVote = voteSummaryBySite.get(siteId)?.myVote ?? 0;
+    const voteDocRef = doc(db, "siteVotes", `${siteId}_${user.uid}`);
+    setError(null);
+    setIsVoting(true);
+
+    try {
+      if (currentVote === value) {
+        await deleteDoc(voteDocRef);
+      } else {
+        await setDoc(voteDocRef, {
+          siteId,
+          uid: user.uid,
+          displayName: getDisplayName(user),
+          value,
+          updatedAt: serverTimestamp(),
+        });
+      }
+    } catch {
+      setError("Oy gönderilemedi. Bağlantıyı kontrol edip tekrar dene.");
+    } finally {
+      setIsVoting(false);
+    }
+  };
+
+  const signIn = async () => {
+    if (!auth) {
+      setError("Firebase bağlantısı yok. Konfigürasyonu kontrol et.");
+      return;
+    }
+
+    setError(null);
+    setIsSigningIn(true);
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (reason) {
+      const errorCode = asString(
+        (reason as { code?: string } | null | undefined)?.code
+      );
+      if (errorCode === "auth/popup-blocked") {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch {
+          setError("Google girişi başlatılamadı. Tekrar dene.");
+        }
+      } else {
+        setError("Google girişi başarısız. Tekrar dene.");
+      }
+    } finally {
+      setIsSigningIn(false);
+    }
+  };
+
   return (
     <article className="soft-card">
       <h2>İlginç Sitelerde Yuvarlan</h2>
@@ -62,20 +290,28 @@ export function SiteRoller() {
         <select
           id="source-filter"
           value={filter}
-          onChange={(event) => {
-            const nextFilter = event.target.value as SourceFilter;
-            setFilter(nextFilter);
-            const nextPool =
-              nextFilter === "all"
-                ? discoverySites
-                : discoverySites.filter((site) => site.source === nextFilter);
-            setSelectedId(nextPool[0]?.id ?? "");
-          }}
+          onChange={(event) => setFilter(event.target.value as SourceFilter)}
         >
           <option value="all">{sourceText.all}</option>
           <option value="eksi">{sourceText.eksi}</option>
           <option value="global">{sourceText.global}</option>
         </select>
+      </div>
+
+      <div className="vote-auth-row">
+        <p className="meta-line">Sıralama global like/dislike skoruna göre canlı güncellenir.</p>
+        {user ? (
+          <p className="meta-line">Oy veriyorsun: {getDisplayName(user)}</p>
+        ) : (
+          <button
+            type="button"
+            className="secondary-btn"
+            onClick={signIn}
+            disabled={isSigningIn || !auth}
+          >
+            {isSigningIn ? "Giriş yapılıyor..." : "Oy vermek için Google ile giriş yap"}
+          </button>
+        )}
       </div>
 
       {selectedSite ? (
@@ -86,6 +322,29 @@ export function SiteRoller() {
             Ruh hali: {VIBE_LABELS[selectedSite.vibe]} | Kaynak:{" "}
             {sourceText[selectedSite.source]}
           </p>
+          <div className="vote-bar">
+            <button
+              type="button"
+              className={`vote-btn ${voteSummaryBySite.get(selectedSite.id)?.myVote === 1 ? "active-like" : ""}`}
+              onClick={() => voteForSite(selectedSite.id, 1)}
+              disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
+              aria-label={`${selectedSite.name} beğen`}
+            >
+              👍 {voteSummaryBySite.get(selectedSite.id)?.likes ?? 0}
+            </button>
+            <button
+              type="button"
+              className={`vote-btn ${voteSummaryBySite.get(selectedSite.id)?.myVote === -1 ? "active-dislike" : ""}`}
+              onClick={() => voteForSite(selectedSite.id, -1)}
+              disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
+              aria-label={`${selectedSite.name} beğenme`}
+            >
+              👎 {voteSummaryBySite.get(selectedSite.id)?.dislikes ?? 0}
+            </button>
+            <span className="vote-score">
+              Skor: {voteSummaryBySite.get(selectedSite.id)?.score ?? 0}
+            </span>
+          </div>
           <div className="roll-actions" style={{ marginTop: 16, display: "flex", gap: 10 }}>
             <button type="button" className="action-btn" onClick={rollSite}>
               Rastgele Seç
@@ -102,17 +361,49 @@ export function SiteRoller() {
         </section>
       ) : null}
 
+      {error ? <p className="note-warn">{error}</p> : null}
+
       <div className="roll-grid">
-        {filteredSites.map((site) => (
-          <article className="roll-card" key={site.id}>
-            <span className="source">{sourceText[site.source]}</span>
-            <strong>{site.name}</strong>
-            <p className="meta-line">{site.description}</p>
-            <a href={site.url} target="_blank" rel="noreferrer" className="ghost-btn">
-              Siteye Git
-            </a>
-          </article>
-        ))}
+        {filteredSites.map((site) => {
+          const vote = voteSummaryBySite.get(site.id) ?? {
+            likes: 0,
+            dislikes: 0,
+            score: 0,
+            myVote: 0,
+          };
+
+          return (
+            <article className="roll-card" key={site.id}>
+              <span className="source">{sourceText[site.source]}</span>
+              <strong>{site.name}</strong>
+              <p className="meta-line">{site.description}</p>
+              <div className="vote-bar vote-bar-card">
+                <button
+                  type="button"
+                  className={`vote-btn ${vote.myVote === 1 ? "active-like" : ""}`}
+                  onClick={() => voteForSite(site.id, 1)}
+                  disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
+                  aria-label={`${site.name} beğen`}
+                >
+                  👍 {vote.likes}
+                </button>
+                <button
+                  type="button"
+                  className={`vote-btn ${vote.myVote === -1 ? "active-dislike" : ""}`}
+                  onClick={() => voteForSite(site.id, -1)}
+                  disabled={isVoting || !db || !isCompleteFirebaseConfig(services?.config)}
+                  aria-label={`${site.name} beğenme`}
+                >
+                  👎 {vote.dislikes}
+                </button>
+                <span className="vote-score">Skor: {vote.score}</span>
+              </div>
+              <a href={site.url} target="_blank" rel="noreferrer" className="ghost-btn">
+                Siteye Git
+              </a>
+            </article>
+          );
+        })}
       </div>
 
       <p className="footer-note">
