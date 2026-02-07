@@ -572,10 +572,26 @@ label {
   color: var(--ink-strong);
 }
 
+.message-link {
+  color: var(--accent-mint);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  word-break: break-all;
+}
+
+.message-link:hover {
+  color: var(--accent-sun);
+}
+
 .chat-form {
   display: grid;
   grid-template-columns: 1fr auto;
   gap: 10px;
+}
+
+.guest-name-box {
+  display: grid;
+  gap: 8px;
 }
 
 .task-intake h3 {

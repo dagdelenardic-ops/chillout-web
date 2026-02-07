@@ -1,9 +1,10 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   User,
   onAuthStateChanged,
+  signInAnonymously,
   signInWithPopup,
   signInWithRedirect,
   signOut,
@@ -66,6 +67,8 @@ type ChatBoxMode = "all" | "tasks" | "chat";
 type ChatBoxProps = {
   mode?: ChatBoxMode;
 };
+
+const GUEST_NAME_STORAGE_KEY = "chillout_guest_name_v1";
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -167,6 +170,79 @@ function getDisplayName(user: User | null): string {
   return user.displayName ?? user.email ?? "Anonim";
 }
 
+function asSafeExternalUrl(raw: string): string | null {
+  try {
+    const url = new URL(raw);
+    if (url.protocol === "http:" || url.protocol === "https:") {
+      return url.toString();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function splitTrailingPunctuation(value: string): {
+  core: string;
+  trailing: string;
+} {
+  const trailingMatch = value.match(/[),.;!?]+$/);
+  if (!trailingMatch) {
+    return { core: value, trailing: "" };
+  }
+
+  const trailing = trailingMatch[0];
+  const core = value.slice(0, -trailing.length);
+  return { core, trailing };
+}
+
+function renderTextWithLinks(text: string): ReactNode {
+  const urlRegex = /https?:\/\/[^\s]+/gi;
+  const nodes: ReactNode[] = [];
+  let cursor = 0;
+  let linkIndex = 0;
+
+  for (const match of text.matchAll(urlRegex)) {
+    const start = match.index ?? 0;
+    const rawUrl = match[0];
+    const { core, trailing } = splitTrailingPunctuation(rawUrl);
+
+    if (start > cursor) {
+      nodes.push(text.slice(cursor, start));
+    }
+
+    const safeUrl = asSafeExternalUrl(core);
+    if (safeUrl) {
+      nodes.push(
+        <a
+          key={`msg-link-${linkIndex}`}
+          className="message-link"
+          href={safeUrl}
+          target="_blank"
+          rel="noreferrer"
+        >
+          {core}
+        </a>
+      );
+      linkIndex += 1;
+    } else {
+      nodes.push(rawUrl);
+    }
+
+    if (trailing) {
+      nodes.push(trailing);
+    }
+
+    cursor = start + rawUrl.length;
+  }
+
+  if (cursor < text.length) {
+    nodes.push(text.slice(cursor));
+  }
+
+  return <>{nodes}</>;
+}
+
 export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const [services, setServices] = useState(() => getFirebaseServices());
   const [user, setUser] = useState<User | null>(null);
@@ -174,6 +250,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const [chatDraft, setChatDraft] = useState("");
   const [taskDraft, setTaskDraft] = useState("");
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  const [guestName, setGuestName] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [isCompletingTaskId, setIsCompletingTaskId] = useState<string | null>(
     null
@@ -186,6 +263,10 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const auth = services?.auth ?? null;
   const db = services?.db ?? null;
   const isFirebaseConfigured = Boolean(services);
+  const isGoogleUser = Boolean(
+    user?.providerData.some((provider) => provider.providerId === "google.com")
+  );
+  const guestNameClean = guestName.trim();
   const showTasks = mode === "all" || mode === "tasks";
   const showChat = mode === "all" || mode === "chat";
   const showAuthControls = true;
@@ -203,6 +284,31 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
     return () => unsubscribe();
   }, [auth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const stored = window.localStorage.getItem(GUEST_NAME_STORAGE_KEY) ?? "";
+    const cleaned = stored.trim().slice(0, 40);
+    if (cleaned) {
+      setGuestName(cleaned);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    if (!guestNameClean) {
+      window.localStorage.removeItem(GUEST_NAME_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(GUEST_NAME_STORAGE_KEY, guestNameClean);
+  }, [guestNameClean]);
 
   useEffect(() => {
     if (!db) {
@@ -345,15 +451,19 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages]);
 
-  const canSendChat = Boolean(user) && chatDraft.trim().length > 0;
-  const canSendTask = Boolean(user);
+  const canSendChat = isGoogleUser && chatDraft.trim().length > 0;
+  const canSendTask = isGoogleUser && taskDraft.trim().length > 0;
 
   const statusText = useMemo(() => {
     if (!user) {
       if (mode === "tasks") {
-        return "İş eklemek ve yorum yapmak için sağdaki sohbet kartından Google ile giriş yap.";
+        return "İş eklemek için Google ile giriş yap. Yorum için kullanıcı adı yazıp misafir olarak da katılabilirsin.";
       }
-      return "Google ile giriş yapan herkes anında yazabilir. Katılmak için önce giriş yap.";
+      return "Google ile giriş yapanlar sohbet ve iş paylaşımı yapar. Giriş olmadan sadece kullanıcı adıyla yorum yazabilirsin.";
+    }
+
+    if (!isGoogleUser) {
+      return "Misafir modundasın. Sadece yorum yapabilirsin. Sohbet ve iş paylaşımı için Google ile giriş yap.";
     }
 
     if (mode === "tasks") {
@@ -365,7 +475,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     }
 
     return "Google ile giriş yaptın. Genel sohbete yazabilir, yaptığın işi paylaşabilir, bitince tamamlandı olarak işaretleyebilirsin.";
-  }, [mode, user]);
+  }, [isGoogleUser, mode, user]);
 
   const handleSetupSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -469,7 +579,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const handleSendChat = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!db || !user) {
+    if (!db || !user || !isGoogleUser) {
+      setError("Genel sohbet için Google ile giriş yap.");
       return;
     }
 
@@ -497,7 +608,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const handleSendTask = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!db || !user) {
+    if (!db || !user || !isGoogleUser) {
+      setError("İş paylaşımı için Google ile giriş yap.");
       return;
     }
 
@@ -539,12 +651,47 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   ) => {
     event.preventDefault();
 
-    if (!db || !user) {
+    if (!db) {
       return;
     }
 
     const cleaned = (commentDrafts[taskId] ?? "").trim();
     if (!cleaned) {
+      return;
+    }
+
+    let actor = user;
+    let authorName = "";
+
+    if (isGoogleUser && actor) {
+      authorName = getDisplayName(actor);
+    } else {
+      if (!guestNameClean) {
+        setError("Yorum için önce kullanıcı adı yaz.");
+        return;
+      }
+
+      authorName = guestNameClean;
+
+      if (!actor) {
+        if (!auth) {
+          setError("Yorum servisi hazır değil. Sayfayı yenileyip tekrar dene.");
+          return;
+        }
+
+        try {
+          const credential = await signInAnonymously(auth);
+          actor = credential.user;
+        } catch (reason) {
+          const meta = extractErrorMeta(reason);
+          setError(`Misafir yorumu açılamadı (${meta.code}).`);
+          return;
+        }
+      }
+    }
+
+    if (!actor) {
+      setError("Yorum gönderilemedi. Tekrar dene.");
       return;
     }
 
@@ -555,8 +702,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         type: "task_comment",
         taskId,
         text: cleaned,
-        uid: user.uid,
-        displayName: getDisplayName(user),
+        uid: actor.uid,
+        displayName: authorName,
         createdAt: serverTimestamp(),
       });
 
@@ -570,7 +717,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   };
 
   const handleCompleteTask = async (task: TaskView) => {
-    if (!db || !user) {
+    if (!db || !user || !isGoogleUser) {
       return;
     }
 
@@ -669,29 +816,59 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
       {showAuthControls ? (
         <div className="inline-controls">
-          {!user ? (
+          {!isGoogleUser ? (
             <button
               type="button"
               className="action-btn"
               onClick={handleLogin}
               disabled={isSigningIn}
             >
-              {isSigningIn ? "Giriş Yapılıyor..." : "Google ile Giriş Yap"}
+              {isSigningIn ? "Google açılıyor..." : "Google ile Giriş Yap"}
             </button>
-          ) : (
+          ) : null}
+
+          {user ? (
             <>
               <p className="meta-line" style={{ margin: 0 }}>
-                Giriş: <strong>{getDisplayName(user)}</strong>
+                {isGoogleUser ? (
+                  <>
+                    Giriş: <strong>{getDisplayName(user)}</strong>
+                  </>
+                ) : (
+                  <>
+                    Misafir: <strong>{guestNameClean || "Kullanıcı adı yok"}</strong>
+                  </>
+                )}
               </p>
               <button type="button" className="ghost-btn" onClick={handleLogout}>
                 Çıkış
               </button>
             </>
-          )}
+          ) : null}
         </div>
       ) : (
         <p className="meta-line">{statusText}</p>
       )}
+
+      {!isGoogleUser ? (
+        <section className="guest-name-box" aria-label="Misafir yorum adı">
+          <label htmlFor="guest-name-input">Giriş yapmadan yorum için kullanıcı adı</label>
+          <div className="chat-form">
+            <input
+              id="guest-name-input"
+              type="text"
+              value={guestName}
+              onChange={(event) => setGuestName(event.target.value.slice(0, 40))}
+              placeholder="Örn: Gurur"
+              maxLength={40}
+            />
+          </div>
+          <p className="meta-line">
+            Bu modda yalnızca yorum yapabilirsin. Genel sohbet ve iş paylaşımı için
+            Google girişi gerekir.
+          </p>
+        </section>
+      ) : null}
 
       {showTasks ? (
         <>
@@ -701,7 +878,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
               <input
                 type="text"
                 placeholder={
-                  user
+                  isGoogleUser
                     ? "Örn: Gurur Sönmez vibecoding ile jeopolitik harita yapıyor."
                     : mode === "tasks"
                       ? "Yazmak için sağdaki sohbet kartından Google ile giriş yap..."
@@ -709,7 +886,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                 }
                 value={taskDraft}
                 onChange={(event) => setTaskDraft(event.target.value)}
-                disabled={!user}
+                disabled={!isGoogleUser}
                 maxLength={240}
               />
               <button type="submit" className="secondary-btn" disabled={!canSendTask}>
@@ -736,8 +913,12 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
             ) : (
               tasks.map((task) => {
                 const comments = taskCommentsByTask[task.id] ?? [];
-                const canMarkComplete = user?.uid === task.uid && !task.completed;
+                const canMarkComplete =
+                  isGoogleUser && user?.uid === task.uid && !task.completed;
                 const commentDraft = commentDrafts[task.id] ?? "";
+                const canCommentSubmit =
+                  commentDraft.trim().length > 0 &&
+                  (isGoogleUser || guestNameClean.length > 0);
 
                 return (
                   <article
@@ -749,7 +930,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                       <span className="meta-line">{task.createdAtLabel}</span>
                     </div>
 
-                    <p className="task-text">{task.text}</p>
+                    <p className="task-text">{renderTextWithLinks(task.text)}</p>
 
                     <div className="task-status-row">
                       {task.completed ? (
@@ -786,7 +967,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                               <strong>{comment.displayName}</strong>
                               <span>{comment.createdAtLabel}</span>
                             </div>
-                            <p>{comment.text}</p>
+                            <p>{renderTextWithLinks(comment.text)}</p>
                           </article>
                         ))
                       )}
@@ -798,23 +979,20 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                         <input
                           type="text"
                           placeholder={
-                            user
+                            isGoogleUser
                               ? "Bu işe yorum yaz..."
-                              : mode === "tasks"
-                                ? "Yorum için sağdaki sohbet kartından giriş yap..."
-                                : "Yorum için giriş yap..."
+                              : "Yorum yaz. Göndermek için üstte kullanıcı adı gir..."
                           }
                           value={commentDraft}
                           onChange={(event) =>
                             handleCommentDraftChange(task.id, event.target.value)
                           }
-                          disabled={!user}
                           maxLength={240}
                         />
                         <button
                           type="submit"
                           className="secondary-btn"
-                          disabled={!user || commentDraft.trim().length === 0}
+                          disabled={!canCommentSubmit}
                         >
                           Yorumla
                         </button>
@@ -841,7 +1019,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
                   <strong>
                     {message.displayName} - {message.createdAtLabel}
                   </strong>
-                  <p>{message.text}</p>
+                  <p>{renderTextWithLinks(message.text)}</p>
                 </article>
               ))
             )}
@@ -852,11 +1030,13 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
             <input
               type="text"
               placeholder={
-                user ? "Sohbete mesaj yaz..." : "Mesaj yazmak için Google ile giriş yap..."
+                isGoogleUser
+                  ? "Sohbete mesaj yaz..."
+                  : "Mesaj yazmak için Google ile giriş yap..."
               }
               value={chatDraft}
               onChange={(event) => setChatDraft(event.target.value)}
-              disabled={!user}
+              disabled={!isGoogleUser}
               maxLength={240}
             />
             <button type="submit" className="secondary-btn" disabled={!canSendChat}>

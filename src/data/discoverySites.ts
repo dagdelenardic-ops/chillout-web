@@ -10,14 +10,6 @@ export const discoverySites: DiscoverySite[] = [
     vibe: "sasirtici",
   },
   {
-    id: "zombo",
-    name: "Zombo",
-    url: "https://zombo.com/",
-    description: "Eski internet ruhunda absürt bir açılış deneyimi.",
-    source: "eksi",
-    vibe: "sasirtici",
-  },
-  {
     id: "earthcam",
     name: "EarthCam",
     url: "https://www.earthcam.com/",
