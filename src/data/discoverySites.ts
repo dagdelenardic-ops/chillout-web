@@ -570,14 +570,6 @@ export const discoverySites: DiscoverySite[] = [
     vibe: "sasirtici",
   },
   {
-    id: "timemaps",
-    name: "TimeMaps",
-    url: "https://timemaps.com/",
-    description: "Tarihi dönemleri harita üstünde katman katman gezerek incele.",
-    source: "eksi",
-    vibe: "kesif",
-  },
-  {
     id: "imdb-explorer",
     name: "IMDb Explorer",
     url: "http://imdbexplorer.com/",
