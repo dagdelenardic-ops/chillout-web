@@ -17,6 +17,28 @@ type GamePhase = "ready" | "running" | "game_over";
 type ToneKey = "eat" | "boost" | "danger" | "dead" | "fortune" | "start";
 
 type Food = Point & { type: FoodType };
+type SpriteKey =
+  | "groundA"
+  | "groundB"
+  | "lane"
+  | "snakeHead"
+  | "snakeBodyA"
+  | "snakeBodyB"
+  | "snakeTail"
+  | "foodSimit"
+  | "foodDoner"
+  | "foodBaklava"
+  | "foodCay"
+  | "foodAyran"
+  | "foodKahve"
+  | "nazar";
+
+type AtlasRect = { x: number; y: number; w: number; h: number };
+type SpriteAtlas = {
+  canvas: HTMLCanvasElement;
+  map: Record<SpriteKey, AtlasRect>;
+};
+
 type GameState = {
   phase: GamePhase;
   bestScore: number;
@@ -43,19 +65,12 @@ type GameState = {
   eventTone: ToneKey | null;
 };
 
-const GRID_COLS = 22;
-const GRID_ROWS = 14;
+const GRID_COLS = 20;
+const GRID_ROWS = 12;
 const CELL_SIZE = 18;
 const BOARD_WIDTH = GRID_COLS * CELL_SIZE;
 const BOARD_HEIGHT = GRID_ROWS * CELL_SIZE;
 const BEST_SCORE_KEY = "snake_doner_best_score_v1";
-const GROUND_DARK = "#122832";
-const GROUND_MID = "#183544";
-const GROUND_LINE = "rgba(109, 240, 194, 0.12)";
-const SNAKE_DARK = "#572513";
-const SNAKE_MID = "#b95a28";
-const SNAKE_LIGHT = "#f4ad5c";
-const SNAKE_HOT = "#ffd990";
 
 const FOOD_META: Record<
   FoodType,
@@ -65,34 +80,34 @@ const FOOD_META: Record<
     label: "Simit",
     score: 8,
     grow: 1,
-    hint: "Susam etkisi: kisa sure hizlanma.",
+    hint: "Susam etkisi: kısa süre hızlanma.",
   },
   doner: {
-    label: "Doner",
+    label: "Döner",
     score: 12,
     grow: 2,
-    hint: "Ekmek arasi mi olsun? Yilan uzar.",
+    hint: "Ekmek arası mı olsun? Yılan uzar.",
   },
   baklava: {
     label: "Baklava",
     score: 16,
     grow: 1,
-    hint: "Serbet komasi: kisa sure yavaslama.",
+    hint: "Şerbet koması: kısa süre yavaşlama.",
   },
   cay: {
-    label: "Cay",
+    label: "Çay",
     score: 7,
     grow: 1,
-    hint: "Kafein patlamasi: hizlanma (5'te mola).",
+    hint: "Kafein patlaması: hızlanma (5'te mola).",
   },
   ayran: {
     label: "Ayran",
     score: 9,
     grow: 1,
-    hint: "Kopuk soku: kontroller kisa sure ters.",
+    hint: "Köpük şoku: kontroller kısa süre ters.",
   },
   kahve: {
-    label: "Turk Kahvesi",
+    label: "Türk Kahvesi",
     score: 10,
     grow: 1,
     hint: "Fal bonusu: rastgele yorum.",
@@ -114,23 +129,23 @@ const FOOD_POOL: FoodType[] = [
 
 const EAT_LINES = [
   "Afiyet olsun abi.",
-  "Eline saglik.",
-  "Bir cay daha?",
-  "Cok iyi gidiyorsun.",
+  "Eline sağlık.",
+  "Bir çay daha?",
+  "Çok iyi gidiyorsun.",
 ];
 
 const DEATH_LINES = [
   "Of be abi yine mi?",
-  "Yandi gulum keten helva.",
+  "Yandı gülüm keten helva.",
   "Hayat devam ediyor.",
-  "Duvara girdin, canin sag olsun.",
+  "Duvara girdin, canın sağ olsun.",
 ];
 
 const FORTUNE_LINES = [
-  "Fal: kismetin aciliyor.",
-  "Fal: dikkat, trafikte yavasla.",
-  "Fal: bugun sans senden yana.",
-  "Fal: sabirli olursan skor patlar.",
+  "Fal: kısmetin açılıyor.",
+  "Fal: dikkat, trafikte yavaşla.",
+  "Fal: bugün şans senden yana.",
+  "Fal: sabırlı olursan skor patlar.",
 ];
 
 const DIRECTIONS: Record<"up" | "down" | "left" | "right", Direction> = {
@@ -139,6 +154,23 @@ const DIRECTIONS: Record<"up" | "down" | "left" | "right", Direction> = {
   left: { x: -1, y: 0 },
   right: { x: 1, y: 0 },
 };
+
+const SPRITE_KEYS: SpriteKey[] = [
+  "groundA",
+  "groundB",
+  "lane",
+  "snakeHead",
+  "snakeBodyA",
+  "snakeBodyB",
+  "snakeTail",
+  "foodSimit",
+  "foodDoner",
+  "foodBaklava",
+  "foodCay",
+  "foodAyran",
+  "foodKahve",
+  "nazar",
+];
 
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
@@ -187,172 +219,234 @@ function pickFoodType(): FoodType {
 function getSpeedMs(state: GameState, now: number): number {
   let speed = 138;
   if (now < state.speedBoostUntil) {
-    speed -= 28;
+    speed -= 30;
   }
   if (now < state.slowUntil) {
     speed += 36;
   }
   if (state.trafficState === "green" && now < state.trafficUntil) {
-    speed -= 18;
+    speed -= 20;
   }
-  return Math.max(70, Math.min(240, speed));
+  return Math.max(72, Math.min(235, speed));
 }
 
-function drawFood(ctx: CanvasRenderingContext2D, food: Food) {
-  const px = food.x * CELL_SIZE;
-  const py = food.y * CELL_SIZE;
-  const c = CELL_SIZE;
-
-  if (food.type === "simit") {
-    ctx.fillStyle = "#412014";
-    ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-    ctx.fillStyle = "#ce7f2a";
-    ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
-    ctx.fillStyle = "#7b3c1f";
-    ctx.fillRect(px + 6, py + 6, c - 12, c - 12);
-    ctx.fillStyle = "#f0cb8e";
-    ctx.fillRect(px + 4, py + 4, c - 8, 2);
-    return;
+function directionToAngle(direction: Direction): number {
+  if (direction.x === 1) {
+    return 0;
   }
-
-  if (food.type === "doner") {
-    ctx.fillStyle = "#3f2216";
-    ctx.fillRect(px + 2, py + 1, c - 4, c - 2);
-    ctx.fillStyle = "#8e4d2b";
-    ctx.fillRect(px + 3, py + 2, c - 6, c - 4);
-    ctx.fillStyle = "#cb7a36";
-    ctx.fillRect(px + 5, py + 4, c - 10, c - 8);
-    ctx.fillStyle = "#6a341e";
-    ctx.fillRect(px + 8, py + 2, 2, c - 4);
-    return;
+  if (direction.x === -1) {
+    return Math.PI;
   }
-
-  if (food.type === "baklava") {
-    ctx.fillStyle = "#5d4c20";
-    ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
-    ctx.fillStyle = "#c8a448";
-    ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
-    ctx.fillStyle = "#f0d37f";
-    ctx.fillRect(px + 5, py + 5, c - 10, c - 10);
-    ctx.fillStyle = "#6f5d24";
-    ctx.fillRect(px + 8, py + 2, 2, c - 4);
-    ctx.fillRect(px + 2, py + 8, c - 4, 2);
-    return;
+  if (direction.y === -1) {
+    return -Math.PI / 2;
   }
-
-  if (food.type === "cay") {
-    ctx.fillStyle = "#3d4852";
-    ctx.fillRect(px + 4, py + 1, c - 8, c - 2);
-    ctx.fillStyle = "#b01f1f";
-    ctx.fillRect(px + 5, py + 4, c - 10, c - 6);
-    ctx.fillStyle = "#d8ecf2";
-    ctx.fillRect(px + 4, py + 2, c - 8, 2);
-    ctx.fillRect(px + 4, py + c - 3, c - 8, 2);
-    return;
-  }
-
-  if (food.type === "ayran") {
-    ctx.fillStyle = "#5f7683";
-    ctx.fillRect(px + 3, py + 3, c - 6, c - 4);
-    ctx.fillStyle = "#dfeef3";
-    ctx.fillRect(px + 4, py + 4, c - 8, c - 6);
-    ctx.fillStyle = "#98b9c8";
-    ctx.fillRect(px + 5, py + 3, c - 10, 2);
-    ctx.fillRect(px + 5, py + c - 3, c - 10, 2);
-    return;
-  }
-
-  ctx.fillStyle = "#2f1d14";
-  ctx.fillRect(px + 3, py + 3, c - 6, c - 5);
-  ctx.fillStyle = "#5b3524";
-  ctx.fillRect(px + 4, py + 4, c - 8, c - 6);
-  ctx.fillStyle = "#9c6a4a";
-  ctx.fillRect(px + 5, py + 3, c - 10, 2);
-  ctx.fillStyle = "#f0dfcb";
-  ctx.fillRect(px + 6, py + 6, c - 12, 2);
+  return Math.PI / 2;
 }
 
-function drawNazar(ctx: CanvasRenderingContext2D, point: Point) {
-  const px = point.x * CELL_SIZE;
-  const py = point.y * CELL_SIZE;
-  const c = CELL_SIZE;
-  ctx.fillStyle = "#0b2a63";
-  ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-  ctx.fillStyle = "#123f91";
-  ctx.fillRect(px + 3, py + 3, c - 6, c - 6);
-  ctx.fillStyle = "#e4f2ff";
-  ctx.fillRect(px + 6, py + 6, c - 12, c - 12);
-  ctx.fillStyle = "#1e58c2";
-  ctx.fillRect(px + 8, py + 8, c - 16, c - 16);
-}
+function buildSpriteAtlas(cellSize: number): SpriteAtlas | null {
+  if (typeof document === "undefined") {
+    return null;
+  }
 
-function drawSnake(ctx: CanvasRenderingContext2D, snake: Point[], direction: Direction) {
-  snake.forEach((segment, index) => {
-    const px = segment.x * CELL_SIZE;
-    const py = segment.y * CELL_SIZE;
-    const c = CELL_SIZE;
-    const isHead = index === 0;
-    const isTail = index === snake.length - 1;
+  const columns = 4;
+  const rows = Math.ceil(SPRITE_KEYS.length / columns);
+  const canvas = document.createElement("canvas");
+  canvas.width = columns * cellSize;
+  canvas.height = rows * cellSize;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) {
+    return null;
+  }
 
-    if (isHead) {
-      ctx.fillStyle = "rgba(5, 10, 13, 0.22)";
-      ctx.fillRect(px + 2, py + c - 2, c - 4, 2);
+  ctx.imageSmoothingEnabled = false;
+  const map = {} as Record<SpriteKey, AtlasRect>;
 
-      ctx.fillStyle = SNAKE_DARK;
-      ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-      ctx.fillStyle = "#8e4f2b";
-      ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
-      ctx.fillStyle = SNAKE_MID;
-      ctx.fillRect(px + 4, py + 3, c - 8, c - 6);
-      ctx.fillStyle = SNAKE_LIGHT;
-      ctx.fillRect(px + 4, py + 3, c - 10, 2);
-      ctx.fillStyle = SNAKE_HOT;
-      ctx.fillRect(px + 5, py + 5, c - 12, 1);
+  const drawTile = (sprite: SpriteKey, sx: number, sy: number) => {
+    const p = (x: number, y: number, w: number, h: number, color: string) => {
+      ctx.fillStyle = color;
+      ctx.fillRect(sx + x, sy + y, w, h);
+    };
+    const c = cellSize;
 
-      const eyeX =
-        direction.x === 1 ? px + c - 6 : direction.x === -1 ? px + 4 : px + 7;
-      const eyeY =
-        direction.y === 1 ? py + c - 6 : direction.y === -1 ? py + 4 : py + 6;
-      ctx.fillStyle = "#ffeab4";
-      ctx.fillRect(eyeX, eyeY, 3, 3);
-      ctx.fillStyle = "#2a170e";
-      ctx.fillRect(eyeX + 1, eyeY + 1, 1, 1);
-
-      ctx.fillStyle = "#dadada";
-      if (direction.x === 1) {
-        ctx.fillRect(px - 3, py + 6, 4, 5);
-      } else if (direction.x === -1) {
-        ctx.fillRect(px + c - 1, py + 6, 4, 5);
-      } else if (direction.y === 1) {
-        ctx.fillRect(px + 6, py - 3, 5, 4);
-      } else {
-        ctx.fillRect(px + 6, py + c - 1, 5, 4);
-      }
+    if (sprite === "groundA") {
+      p(0, 0, c, c, "#122734");
+      p(0, 0, c, 2, "rgba(109,240,194,0.06)");
+      p(0, c - 1, c, 1, "rgba(6,15,19,0.45)");
       return;
     }
 
-    ctx.fillStyle = "rgba(5, 10, 13, 0.2)";
-    ctx.fillRect(px + 2, py + c - 2, c - 4, 2);
-
-    ctx.fillStyle = SNAKE_DARK;
-    ctx.fillRect(px + 1, py + 1, c - 2, c - 2);
-    ctx.fillStyle = index % 2 === 0 ? SNAKE_MID : "#a85223";
-    ctx.fillRect(px + 2, py + 2, c - 4, c - 4);
-    ctx.fillStyle = "#6e3a1c";
-    ctx.fillRect(px + 6, py + 2, 2, c - 4);
-    ctx.fillRect(px + 10, py + 2, 2, c - 4);
-    ctx.fillStyle = SNAKE_LIGHT;
-    ctx.fillRect(px + 3, py + 2, c - 6, 2);
-    ctx.fillStyle = SNAKE_HOT;
-    ctx.fillRect(px + 4, py + 4, c - 10, 1);
-
-    if (isTail) {
-      ctx.fillStyle = "#f0d08a";
-      ctx.fillRect(px + 5, py + c - 2, 5, 2);
-      ctx.fillRect(px + 6, py + c, 2, 2);
-      ctx.fillRect(px + 8, py + c + 1, 1, 2);
+    if (sprite === "groundB") {
+      p(0, 0, c, c, "#183547");
+      p(1, 1, c - 2, 1, "rgba(255,211,115,0.06)");
+      p(0, c - 1, c, 1, "rgba(6,15,19,0.45)");
+      return;
     }
+
+    if (sprite === "lane") {
+      p(0, 0, c, c, "rgba(0,0,0,0)");
+      p(0, 2, c, 1, "rgba(255,211,115,0.1)");
+      p(0, c - 3, c, 1, "rgba(109,240,194,0.08)");
+      return;
+    }
+
+    if (sprite === "snakeHead") {
+      p(1, c - 2, c - 4, 2, "rgba(5,10,13,0.25)");
+      p(1, 1, c - 2, c - 2, "#114b62");
+      p(2, 2, c - 4, c - 4, "#1c8da2");
+      p(4, 3, c - 8, c - 6, "#35c1c1");
+      p(4, 3, c - 10, 2, "#e9fff6");
+      p(5, 5, c - 12, 1, "#ffd373");
+      p(c - 6, 6, 3, 3, "#ffeebf");
+      p(c - 5, 7, 1, 1, "#052f3f");
+      p(c - 2, 6, 2, 5, "#dadada");
+      return;
+    }
+
+    if (sprite === "snakeBodyA") {
+      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
+      p(1, 1, c - 2, c - 2, "#114b62");
+      p(2, 2, c - 4, c - 4, "#35c1c1");
+      p(3, 2, c - 6, 2, "#e9fff6");
+      p(4, 4, c - 10, 1, "#ffd373");
+      p(6, 2, 2, c - 4, "#177385");
+      p(10, 2, 2, c - 4, "#177385");
+      return;
+    }
+
+    if (sprite === "snakeBodyB") {
+      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
+      p(1, 1, c - 2, c - 2, "#114b62");
+      p(2, 2, c - 4, c - 4, "#27a9bd");
+      p(3, 2, c - 6, 2, "#d4fff2");
+      p(4, 4, c - 10, 1, "#ffd373");
+      p(6, 2, 2, c - 4, "#13687a");
+      p(10, 2, 2, c - 4, "#13687a");
+      return;
+    }
+
+    if (sprite === "snakeTail") {
+      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
+      p(1, 1, c - 2, c - 2, "#114b62");
+      p(2, 2, c - 4, c - 4, "#2fb3c3");
+      p(3, 2, c - 6, 2, "#d7fff3");
+      p(c - 6, c - 2, 5, 2, "#ffdba0");
+      p(c - 5, c, 2, 2, "#ffdba0");
+      p(c - 3, c + 1, 1, 2, "#ffdba0");
+      return;
+    }
+
+    if (sprite === "foodSimit") {
+      p(1, 1, c - 2, c - 2, "#442113");
+      p(3, 3, c - 6, c - 6, "#d6862f");
+      p(6, 6, c - 12, c - 12, "#6d3117");
+      p(4, 4, c - 8, 2, "#f7d29a");
+      return;
+    }
+
+    if (sprite === "foodDoner") {
+      p(2, 1, c - 4, c - 2, "#402216");
+      p(3, 2, c - 6, c - 4, "#95512e");
+      p(5, 4, c - 10, c - 8, "#cf7d39");
+      p(8, 2, 2, c - 4, "#6f371f");
+      return;
+    }
+
+    if (sprite === "foodBaklava") {
+      p(2, 2, c - 4, c - 4, "#5f4e22");
+      p(3, 3, c - 6, c - 6, "#ccab4b");
+      p(5, 5, c - 10, c - 10, "#f3d985");
+      p(8, 2, 2, c - 4, "#6f5d24");
+      p(2, 8, c - 4, 2, "#6f5d24");
+      return;
+    }
+
+    if (sprite === "foodCay") {
+      p(4, 1, c - 8, c - 2, "#4a5864");
+      p(5, 4, c - 10, c - 6, "#b32222");
+      p(4, 2, c - 8, 2, "#d8eef5");
+      p(4, c - 3, c - 8, 2, "#d8eef5");
+      return;
+    }
+
+    if (sprite === "foodAyran") {
+      p(3, 3, c - 6, c - 4, "#627f8f");
+      p(4, 4, c - 8, c - 6, "#e5f3f8");
+      p(5, 3, c - 10, 2, "#9ec2d1");
+      p(5, c - 3, c - 10, 2, "#9ec2d1");
+      return;
+    }
+
+    if (sprite === "foodKahve") {
+      p(3, 3, c - 6, c - 5, "#362117");
+      p(4, 4, c - 8, c - 6, "#5f3826");
+      p(5, 3, c - 10, 2, "#a57653");
+      p(6, 6, c - 12, 2, "#f2e2ce");
+      return;
+    }
+
+    p(1, 1, c - 2, c - 2, "#0b2a63");
+    p(3, 3, c - 6, c - 6, "#123f91");
+    p(6, 6, c - 12, c - 12, "#e4f2ff");
+    p(8, 8, c - 16, c - 16, "#1e58c2");
+  };
+
+  SPRITE_KEYS.forEach((sprite, index) => {
+    const sx = (index % columns) * cellSize;
+    const sy = Math.floor(index / columns) * cellSize;
+    map[sprite] = { x: sx, y: sy, w: cellSize, h: cellSize };
+    drawTile(sprite, sx, sy);
   });
+
+  return { canvas, map };
+}
+
+function drawSprite(
+  ctx: CanvasRenderingContext2D,
+  atlas: SpriteAtlas,
+  sprite: SpriteKey,
+  cellX: number,
+  cellY: number
+) {
+  const rect = atlas.map[sprite];
+  ctx.drawImage(
+    atlas.canvas,
+    rect.x,
+    rect.y,
+    rect.w,
+    rect.h,
+    cellX * CELL_SIZE,
+    cellY * CELL_SIZE,
+    CELL_SIZE,
+    CELL_SIZE
+  );
+}
+
+function drawRotatedSprite(
+  ctx: CanvasRenderingContext2D,
+  atlas: SpriteAtlas,
+  sprite: SpriteKey,
+  cellX: number,
+  cellY: number,
+  angle: number
+) {
+  const rect = atlas.map[sprite];
+  const centerX = cellX * CELL_SIZE + CELL_SIZE / 2;
+  const centerY = cellY * CELL_SIZE + CELL_SIZE / 2;
+  ctx.save();
+  ctx.translate(centerX, centerY);
+  ctx.rotate(angle);
+  ctx.drawImage(
+    atlas.canvas,
+    rect.x,
+    rect.y,
+    rect.w,
+    rect.h,
+    -CELL_SIZE / 2,
+    -CELL_SIZE / 2,
+    CELL_SIZE,
+    CELL_SIZE
+  );
+  ctx.restore();
 }
 
 function readBestScoreFromStorage(): number {
@@ -369,10 +463,10 @@ function readBestScoreFromStorage(): number {
 
 function createInitialGame(now = Date.now(), bestScore = 0): GameState {
   const snake = [
-    { x: 10, y: 10 },
-    { x: 9, y: 10 },
-    { x: 8, y: 10 },
-    { x: 7, y: 10 },
+    { x: 8, y: 6 },
+    { x: 7, y: 6 },
+    { x: 6, y: 6 },
+    { x: 5, y: 6 },
   ];
   const blocked = new Set(snake.map(makeBlockedKey));
   const firstFoodPoint = randomCell(blocked);
@@ -398,7 +492,7 @@ function createInitialGame(now = Date.now(), bestScore = 0): GameState {
     nextTrafficAt: now + randomInt(9000, 13000),
     nextNazarAt: now + randomInt(10000, 16000),
     gameOverLine: "",
-    voiceLine: "Yilan doner hazir. Baslayalim.",
+    voiceLine: "Yılan döner hazır. Başlayalım.",
     eventId: 0,
     eventTone: null,
   };
@@ -409,6 +503,7 @@ export function SnakeDonerGame() {
   const swipeStartRef = useRef<Point | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
+  const atlas = useMemo(() => buildSpriteAtlas(CELL_SIZE), []);
   const [game, setGame] = useState<GameState>(() =>
     createInitialGame(Date.now(), readBestScoreFromStorage())
   );
@@ -416,24 +511,24 @@ export function SnakeDonerGame() {
   const speedLabel = useMemo(() => {
     const speed = getSpeedMs(game, game.nowMs);
     if (speed <= 85) {
-      return "Cok hizli";
+      return "Çok hızlı";
     }
     if (speed <= 120) {
-      return "Hizli";
+      return "Hızlı";
     }
     if (speed <= 160) {
       return "Normal";
     }
-    return "Yavas";
+    return "Yavaş";
   }, [game]);
 
   const isReversed = game.nowMs < game.reverseUntil;
   const isFreeze = game.nowMs < game.freezeUntil;
   const trafficText =
     game.trafficState === "red"
-      ? "Kirmizi isik: DUR"
+      ? "Kırmızı ışık: DUR"
       : game.trafficState === "green"
-        ? "Yesil isik: Bas gaza"
+        ? "Yeşil ışık: Bas gaza"
         : "Trafik normal";
 
   useEffect(() => {
@@ -445,7 +540,7 @@ export function SnakeDonerGame() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas) {
+    if (!canvas || !atlas) {
       return;
     }
     const ctx = canvas.getContext("2d");
@@ -458,41 +553,66 @@ export function SnakeDonerGame() {
 
     for (let y = 0; y < GRID_ROWS; y += 1) {
       for (let x = 0; x < GRID_COLS; x += 1) {
-        const laneBand = y % 4 === 1;
-        const light = (x + y) % 2 === 0;
-        const px = x * CELL_SIZE;
-        const py = y * CELL_SIZE;
-
-        ctx.fillStyle = light ? GROUND_MID : GROUND_DARK;
-        ctx.fillRect(px, py, CELL_SIZE, CELL_SIZE);
-
-        if (laneBand) {
-          ctx.fillStyle = "rgba(255, 211, 115, 0.08)";
-          ctx.fillRect(px, py + 2, CELL_SIZE, 1);
-        }
-
-        if (x % 5 === 0) {
-          ctx.fillStyle = GROUND_LINE;
-          ctx.fillRect(px, py, 1, CELL_SIZE);
+        const even = (x + y) % 2 === 0;
+        drawSprite(ctx, atlas, even ? "groundA" : "groundB", x, y);
+        if (y % 4 === 1) {
+          drawSprite(ctx, atlas, "lane", x, y);
         }
       }
     }
 
-    ctx.fillStyle = "rgba(4, 9, 12, 0.18)";
-    ctx.fillRect(0, 0, BOARD_WIDTH, 10);
-    ctx.fillRect(0, BOARD_HEIGHT - 10, BOARD_WIDTH, 10);
-
     if (game.nazar) {
-      drawNazar(ctx, game.nazar);
+      drawSprite(ctx, atlas, "nazar", game.nazar.x, game.nazar.y);
     }
-    drawFood(ctx, game.food);
-    drawSnake(ctx, game.snake, game.direction);
+
+    const foodSprite: Record<FoodType, SpriteKey> = {
+      simit: "foodSimit",
+      doner: "foodDoner",
+      baklava: "foodBaklava",
+      cay: "foodCay",
+      ayran: "foodAyran",
+      kahve: "foodKahve",
+    };
+    drawSprite(ctx, atlas, foodSprite[game.food.type], game.food.x, game.food.y);
+
+    game.snake.forEach((segment, index) => {
+      if (index === 0) {
+        drawRotatedSprite(
+          ctx,
+          atlas,
+          "snakeHead",
+          segment.x,
+          segment.y,
+          directionToAngle(game.direction)
+        );
+        return;
+      }
+
+      if (index === game.snake.length - 1) {
+        const beforeTail = game.snake[index - 1];
+        const tailDirection = {
+          x: segment.x - beforeTail.x,
+          y: segment.y - beforeTail.y,
+        };
+        drawRotatedSprite(
+          ctx,
+          atlas,
+          "snakeTail",
+          segment.x,
+          segment.y,
+          directionToAngle(tailDirection)
+        );
+        return;
+      }
+
+      drawSprite(ctx, atlas, index % 2 === 0 ? "snakeBodyA" : "snakeBodyB", segment.x, segment.y);
+    });
 
     if (game.trafficState === "red") {
-      ctx.fillStyle = "rgba(150, 0, 0, 0.15)";
+      ctx.fillStyle = "rgba(150, 0, 0, 0.16)";
       ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
     }
-  }, [game]);
+  }, [atlas, game]);
 
   const playTone = useCallback((tone: ToneKey | null) => {
     if (!tone || typeof window === "undefined") {
@@ -553,7 +673,7 @@ export function SnakeDonerGame() {
       phase: "running",
       eventId: prev.eventId + 1,
       eventTone: "start",
-      voiceLine: "Afiyet olsun abi, basladik.",
+      voiceLine: "Afiyet olsun abi, başladık.",
     }));
   }, []);
 
@@ -658,7 +778,7 @@ export function SnakeDonerGame() {
               trafficUntil: now + 2400,
               nextTrafficAt: now + randomInt(9000, 14000),
             };
-            line = "Kirmizi isik. Dur!";
+            line = "Kırmızı ışık. Dur!";
             tone = "danger";
           } else {
             next = {
@@ -667,7 +787,7 @@ export function SnakeDonerGame() {
               trafficUntil: now + 4200,
               nextTrafficAt: now + randomInt(9000, 14000),
             };
-            line = "Yesil yandi. Bas gaza!";
+            line = "Yeşil yandı. Bas gaza!";
             tone = "boost";
           }
         }
@@ -730,7 +850,7 @@ export function SnakeDonerGame() {
           speedBoostUntil = Math.max(speedBoostUntil, now + 3600);
           score += 4;
           nazar = null;
-          line = "Nazar enerjisi. Hizlandin!";
+          line = "Nazar enerjisi. Hızlandın!";
           tone = "boost";
         }
 
@@ -748,32 +868,32 @@ export function SnakeDonerGame() {
 
           if (eaten === "simit") {
             speedBoostUntil = Math.max(speedBoostUntil, now + 4200);
-            line = "Simit etkisi. Hizlandin.";
+            line = "Simit etkisi. Hızlandın.";
             tone = "boost";
             teaStreak = 0;
           } else if (eaten === "doner") {
-            line = "Ekmek arasi mi olsun?";
+            line = "Ekmek arası mı olsun?";
             tone = "eat";
             teaStreak = 0;
           } else if (eaten === "baklava") {
             slowUntil = Math.max(slowUntil, now + 5200);
-            line = "Serbet komasi. Biraz yavas.";
+            line = "Şerbet koması. Biraz yavaş.";
             tone = "eat";
             teaStreak = 0;
           } else if (eaten === "cay") {
             speedBoostUntil = Math.max(speedBoostUntil, now + 3000);
             teaStreak += 1;
-            line = "Cay geldi. Kafein patlamasi.";
+            line = "Çay geldi. Kafein patlaması.";
             tone = "boost";
             if (teaStreak >= 5) {
               teaStreak = 0;
               freezeUntil = now + 3000;
-              line = "5 cay oldu. Zorunlu cay molasi (3 sn).";
+              line = "5 çay oldu. Zorunlu çay molası (3 sn).";
               tone = "danger";
             }
           } else if (eaten === "ayran") {
             reverseUntil = now + 4200;
-            line = "Kopuk soku. Kontroller ters!";
+            line = "Köpük şoku. Kontroller ters!";
             tone = "danger";
             teaStreak = 0;
           } else if (eaten === "kahve") {
@@ -852,14 +972,14 @@ export function SnakeDonerGame() {
   const statusPills = [
     { label: speedLabel, active: true },
     { label: isReversed ? "Kontroller ters" : "Kontroller normal", active: isReversed },
-    { label: isFreeze ? "Cay molasi (durdu)" : "Akis serbest", active: isFreeze },
+    { label: isFreeze ? "Çay molası (durdu)" : "Akış serbest", active: isFreeze },
   ];
 
   return (
     <article className="soft-card snake-shell">
-      <h2>Yilan Doner</h2>
+      <h2>Yılan Döner</h2>
       <p className="snake-subline">
-        Masaustunde ok/WASD, telefonda swipe ile oyna. Duvar var, trafik var.
+        Masaüstünde ok/WASD, telefonda swipe ile oyna. Duvar var, trafik var.
       </p>
 
       <section className="snake-stats">
@@ -895,17 +1015,16 @@ export function SnakeDonerGame() {
                 <p>
                   {game.phase === "game_over"
                     ? game.gameOverLine || "Bu tur bitti."
-                    : "Yilan doner hazir."}
+                    : "Yılan döner hazır."}
                 </p>
                 <button type="button" className="action-btn" onClick={startNewRun}>
                   {game.phase === "game_over"
-                    ? "Yenildin ama olsun, bir cay ic de devam et"
-                    : "Oyunu Baslat"}
+                    ? "Yenildin ama olsun, bir çay iç de devam et"
+                    : "Oyunu Başlat"}
                 </button>
               </div>
             ) : null}
           </div>
-
         </div>
 
         <aside className="snake-side">
@@ -932,7 +1051,7 @@ export function SnakeDonerGame() {
           </div>
 
           <p className="meta-line">
-            Bu surumde yiyecek efektleri, trafik isigi ve nazar aktif. Minibus ve
+            Bu sürümde yiyecek efektleri, trafik ışığı ve nazar aktif. Minibüs ve
             vergi memuru sonraki turda eklenecek.
           </p>
         </aside>
