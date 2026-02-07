@@ -138,6 +138,23 @@ function authHelpText(code: string, fallbackMessage: string): string {
   );
 }
 
+function guestAuthHelpText(code: string): string {
+  const normalized = code.toLowerCase();
+
+  if (
+    normalized === "auth/admin-restricted-operation" ||
+    normalized === "auth/operation-not-allowed"
+  ) {
+    return "Firebase Console > Authentication > Sign-in method içinde Anonymous sağlayıcısını Enable et.";
+  }
+
+  if (normalized === "auth/network-request-failed") {
+    return "Ağ isteği başarısız. VPN/engel/bağlantıyı kontrol edip tekrar dene.";
+  }
+
+  return "Misafir giriş ayarlarını kontrol edip tekrar dene.";
+}
+
 function formatApiKeyHint(apiKey: string | undefined): string {
   if (!apiKey) {
     return "bilinmiyor";
@@ -614,7 +631,9 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
           actor = credential.user;
         } catch (reason) {
           const meta = extractErrorMeta(reason);
-          setError(`Misafir sohbeti açılamadı (${meta.code}).`);
+          setError(
+            `Misafir sohbeti açılamadı (${meta.code}). ${guestAuthHelpText(meta.code)}`
+          );
           return;
         }
       }
@@ -720,7 +739,9 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
           actor = credential.user;
         } catch (reason) {
           const meta = extractErrorMeta(reason);
-          setError(`Misafir yorumu açılamadı (${meta.code}).`);
+          setError(
+            `Misafir yorumu açılamadı (${meta.code}). ${guestAuthHelpText(meta.code)}`
+          );
           return;
         }
       }
