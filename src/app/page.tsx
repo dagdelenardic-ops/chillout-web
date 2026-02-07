@@ -5,13 +5,15 @@ import { AudioPlayer } from "@/components/AudioPlayer";
 import { BackgroundVideoWall } from "@/components/BackgroundVideoWall";
 import { ChatBox } from "@/components/ChatBox";
 import { PomodoroTimer } from "@/components/PomodoroTimer";
+import { SnakeDonerGame } from "@/components/SnakeDonerGame";
 import { SiteRoller } from "@/components/SiteRoller";
 
-type Tab = "pomodoro" | "roller";
+type Tab = "pomodoro" | "roller" | "snake";
 
 const TAB_LABELS: Record<Tab, string> = {
   pomodoro: "Pomodoro",
   roller: "Keşfet",
+  snake: "Yılan",
 };
 
 export default function Home() {
@@ -56,6 +58,7 @@ export default function Home() {
         ) : null}
 
         {activeTab === "roller" ? <SiteRoller /> : null}
+        {activeTab === "snake" ? <SnakeDonerGame /> : null}
       </section>
     </main>
   );
