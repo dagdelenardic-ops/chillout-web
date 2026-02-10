@@ -685,11 +685,6 @@ export function SnakeDonerGame() {
       if (prev.phase === "game_over") {
         return prev;
       }
-      const now = Date.now();
-      if (now < prev.drunkUntil) {
-        // Rakı etkisinde yön kontrolünü kısa süre kilitliyoruz.
-        return prev;
-      }
       const desired = requested;
       if (
         desired.x === -prev.direction.x &&
@@ -941,7 +936,7 @@ export function SnakeDonerGame() {
           } else if (eaten === "ayran") {
             slowUntil = Math.max(slowUntil, now + 5000);
             overlayKey = "ayran";
-            overlayUntil = now + 2000;
+            overlayUntil = now + 1500;
             line = "Rehavet çöktü. 5 saniye yavaş!";
             tone = "danger";
             teaStreak = 0;
@@ -952,7 +947,7 @@ export function SnakeDonerGame() {
           } else if (eaten === "raki") {
             drunkUntil = Math.max(drunkUntil, now + 3000);
             overlayKey = "raki";
-            overlayUntil = now + 2000;
+            overlayUntil = now + 1500;
             line = "Çok sarhoşsun. 3 saniye geri geri!";
             tone = "danger";
             teaStreak = 0;
