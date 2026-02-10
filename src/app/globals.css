@@ -860,47 +860,32 @@ label {
   position: absolute;
   inset: 0;
   display: grid;
-  place-items: center;
   pointer-events: none;
-  background: radial-gradient(circle at center, rgba(0, 0, 0, 0.18), rgba(0, 0, 0, 0));
-}
-
-.snake-effect-card {
-  width: min(520px, calc(100% - 24px));
-  border-radius: 14px;
   overflow: hidden;
-  border: 1px solid rgba(182, 227, 216, 0.22);
-  background: rgba(4, 9, 12, 0.7);
-  box-shadow: 0 18px 40px rgba(3, 8, 10, 0.55);
-  transform: translateY(-6px);
+  align-content: end;
+  background-color: rgba(4, 9, 12, 0.72);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
 }
 
-.snake-effect-card img {
-  display: block;
-  width: 100%;
-  height: auto;
-  image-rendering: pixelated;
+.snake-effect-overlay.is-ayran {
+  background-image: url("/images/ayran.png");
 }
 
-.snake-effect-fallback {
-  padding: 14px 14px 12px;
-  display: grid;
-  gap: 6px;
+.snake-effect-overlay.is-raki {
+  background-image: url("/images/raki.png"), url("/images/rakı.png");
+}
+
+.snake-effect-caption {
+  padding: 10px 12px;
   text-align: center;
-}
-
-.snake-effect-title {
-  margin: 0;
   font-family: var(--font-display), serif;
-  font-size: 1.14rem;
-  letter-spacing: 0.02em;
+  font-size: 1.1rem;
+  letter-spacing: 0.03em;
   color: var(--accent-sun);
-}
-
-.snake-effect-sub {
-  margin: 0;
-  font-size: 0.9rem;
-  color: var(--ink-soft);
+  text-shadow: 0 3px 12px rgba(0, 0, 0, 0.55);
+  background: linear-gradient(to top, rgba(4, 9, 12, 0.84), rgba(4, 9, 12, 0));
 }
 
 .snake-dpad {
