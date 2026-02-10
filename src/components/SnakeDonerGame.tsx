@@ -8,10 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
+import Image from "next/image";
 
 type Point = { x: number; y: number };
 type Direction = Point;
-type FoodType = "simit" | "doner" | "baklava" | "cay" | "ayran" | "kahve";
+type FoodType = "simit" | "doner" | "baklava" | "cay" | "ayran" | "kahve" | "raki";
 type TrafficState = "none" | "red" | "green";
 type GamePhase = "ready" | "running" | "game_over";
 type ToneKey = "eat" | "boost" | "danger" | "dead" | "fortune" | "start";
@@ -25,12 +26,6 @@ type SpriteKey =
   | "snakeBodyA"
   | "snakeBodyB"
   | "snakeTail"
-  | "foodSimit"
-  | "foodDoner"
-  | "foodBaklava"
-  | "foodCay"
-  | "foodAyran"
-  | "foodKahve"
   | "nazar";
 
 type AtlasRect = { x: number; y: number; w: number; h: number };
@@ -52,13 +47,15 @@ type GameState = {
   nowMs: number;
   speedBoostUntil: number;
   slowUntil: number;
-  reverseUntil: number;
   freezeUntil: number;
   teaStreak: number;
   trafficState: TrafficState;
   trafficUntil: number;
   nextTrafficAt: number;
   nextNazarAt: number;
+  drunkUntil: number;
+  overlayKey: null | "ayran" | "raki";
+  overlayUntil: number;
   gameOverLine: string;
   voiceLine: string;
   eventId: number;
@@ -104,13 +101,19 @@ const FOOD_META: Record<
     label: "Ayran",
     score: 9,
     grow: 1,
-    hint: "Köpük şoku: kontroller kısa süre ters.",
+    hint: "Rehavet çöktü: 5 saniye yavaşlama.",
   },
   kahve: {
     label: "Türk Kahvesi",
     score: 10,
     grow: 1,
     hint: "Fal bonusu: rastgele yorum.",
+  },
+  raki: {
+    label: "Rakı",
+    score: 11,
+    grow: 1,
+    hint: "Çok sarhoşsun: 5 saniye yalpalama.",
   },
 };
 
@@ -125,6 +128,7 @@ const FOOD_POOL: FoodType[] = [
   "cay",
   "ayran",
   "kahve",
+  "raki",
 ];
 
 const EAT_LINES = [
@@ -138,7 +142,7 @@ const DEATH_LINES = [
   "Of be abi yine mi?",
   "Yandı gülüm keten helva.",
   "Hayat devam ediyor.",
-  "Duvara girdin, canın sağ olsun.",
+  "Kuyruğa çarptın. Canın sağ olsun.",
 ];
 
 const FORTUNE_LINES = [
@@ -163,12 +167,6 @@ const SPRITE_KEYS: SpriteKey[] = [
   "snakeBodyA",
   "snakeBodyB",
   "snakeTail",
-  "foodSimit",
-  "foodDoner",
-  "foodBaklava",
-  "foodCay",
-  "foodAyran",
-  "foodKahve",
   "nazar",
 ];
 
@@ -241,6 +239,16 @@ function directionToAngle(direction: Direction): number {
     return -Math.PI / 2;
   }
   return Math.PI / 2;
+}
+
+function normalizeWrapDelta(delta: number): number {
+  if (delta > 1) {
+    return -1;
+  }
+  if (delta < -1) {
+    return 1;
+  }
+  return delta;
 }
 
 function buildSpriteAtlas(cellSize: number): SpriteAtlas | null {
@@ -332,55 +340,6 @@ function buildSpriteAtlas(cellSize: number): SpriteAtlas | null {
       p(c - 6, c - 2, 5, 2, "#ffdba0");
       p(c - 5, c, 2, 2, "#ffdba0");
       p(c - 3, c + 1, 1, 2, "#ffdba0");
-      return;
-    }
-
-    if (sprite === "foodSimit") {
-      p(1, 1, c - 2, c - 2, "#442113");
-      p(3, 3, c - 6, c - 6, "#d6862f");
-      p(6, 6, c - 12, c - 12, "#6d3117");
-      p(4, 4, c - 8, 2, "#f7d29a");
-      return;
-    }
-
-    if (sprite === "foodDoner") {
-      p(2, 1, c - 4, c - 2, "#402216");
-      p(3, 2, c - 6, c - 4, "#95512e");
-      p(5, 4, c - 10, c - 8, "#cf7d39");
-      p(8, 2, 2, c - 4, "#6f371f");
-      return;
-    }
-
-    if (sprite === "foodBaklava") {
-      p(2, 2, c - 4, c - 4, "#5f4e22");
-      p(3, 3, c - 6, c - 6, "#ccab4b");
-      p(5, 5, c - 10, c - 10, "#f3d985");
-      p(8, 2, 2, c - 4, "#6f5d24");
-      p(2, 8, c - 4, 2, "#6f5d24");
-      return;
-    }
-
-    if (sprite === "foodCay") {
-      p(4, 1, c - 8, c - 2, "#4a5864");
-      p(5, 4, c - 10, c - 6, "#b32222");
-      p(4, 2, c - 8, 2, "#d8eef5");
-      p(4, c - 3, c - 8, 2, "#d8eef5");
-      return;
-    }
-
-    if (sprite === "foodAyran") {
-      p(3, 3, c - 6, c - 4, "#627f8f");
-      p(4, 4, c - 8, c - 6, "#e5f3f8");
-      p(5, 3, c - 10, 2, "#9ec2d1");
-      p(5, c - 3, c - 10, 2, "#9ec2d1");
-      return;
-    }
-
-    if (sprite === "foodKahve") {
-      p(3, 3, c - 6, c - 5, "#362117");
-      p(4, 4, c - 8, c - 6, "#5f3826");
-      p(5, 3, c - 10, 2, "#a57653");
-      p(6, 6, c - 12, 2, "#f2e2ce");
       return;
     }
 
@@ -484,13 +443,15 @@ function createInitialGame(now = Date.now(), bestScore = 0): GameState {
     nowMs: now,
     speedBoostUntil: 0,
     slowUntil: 0,
-    reverseUntil: 0,
     freezeUntil: 0,
     teaStreak: 0,
     trafficState: "none",
     trafficUntil: 0,
     nextTrafficAt: now + randomInt(9000, 13000),
     nextNazarAt: now + randomInt(10000, 16000),
+    drunkUntil: 0,
+    overlayKey: null,
+    overlayUntil: 0,
     gameOverLine: "",
     voiceLine: "Yılan döner hazır. Başlayalım.",
     eventId: 0,
@@ -522,8 +483,8 @@ export function SnakeDonerGame() {
     return "Yavaş";
   }, [game]);
 
-  const isReversed = game.nowMs < game.reverseUntil;
   const isFreeze = game.nowMs < game.freezeUntil;
+  const isDrunk = game.nowMs < game.drunkUntil;
   const trafficText =
     game.trafficState === "red"
       ? "Kırmızı ışık: DUR"
@@ -565,15 +526,25 @@ export function SnakeDonerGame() {
       drawSprite(ctx, atlas, "nazar", game.nazar.x, game.nazar.y);
     }
 
-    const foodSprite: Record<FoodType, SpriteKey> = {
-      simit: "foodSimit",
-      doner: "foodDoner",
-      baklava: "foodBaklava",
-      cay: "foodCay",
-      ayran: "foodAyran",
-      kahve: "foodKahve",
+    const foodEmoji: Record<FoodType, string> = {
+      simit: "🥯",
+      doner: "🥙",
+      baklava: "🧁",
+      cay: "🍵",
+      ayran: "🥛",
+      kahve: "☕",
+      raki: "🥃",
     };
-    drawSprite(ctx, atlas, foodSprite[game.food.type], game.food.x, game.food.y);
+
+    // Emoji render for foods: more readable than pixel tiles and matches the request.
+    ctx.save();
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.font = `${Math.floor(CELL_SIZE * 0.95)}px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif`;
+    const fx = game.food.x * CELL_SIZE + CELL_SIZE / 2;
+    const fy = game.food.y * CELL_SIZE + CELL_SIZE / 2 + 0.5;
+    ctx.fillText(foodEmoji[game.food.type], fx, fy);
+    ctx.restore();
 
     game.snake.forEach((segment, index) => {
       if (index === 0) {
@@ -591,8 +562,8 @@ export function SnakeDonerGame() {
       if (index === game.snake.length - 1) {
         const beforeTail = game.snake[index - 1];
         const tailDirection = {
-          x: segment.x - beforeTail.x,
-          y: segment.y - beforeTail.y,
+          x: normalizeWrapDelta(segment.x - beforeTail.x),
+          y: normalizeWrapDelta(segment.y - beforeTail.y),
         };
         drawRotatedSprite(
           ctx,
@@ -682,11 +653,7 @@ export function SnakeDonerGame() {
       if (prev.phase === "game_over") {
         return prev;
       }
-      const now = Date.now();
-      const desired =
-        now < prev.reverseUntil
-          ? { x: -requested.x, y: -requested.y }
-          : requested;
+      const desired = requested;
       if (
         desired.x === -prev.direction.x &&
         desired.y === -prev.direction.y
@@ -816,15 +783,32 @@ export function SnakeDonerGame() {
 
         const direction = next.pendingDirection;
         const head = next.snake[0];
-        const newHead = { x: head.x + direction.x, y: head.y + direction.y };
-        const outOfBounds =
-          newHead.x < 0 ||
-          newHead.y < 0 ||
-          newHead.x >= GRID_COLS ||
-          newHead.y >= GRID_ROWS;
+        let newHead = { x: head.x + direction.x, y: head.y + direction.y };
+        // Toroidal wrapping: wall hits don't end the game.
+        newHead = {
+          x: (newHead.x + GRID_COLS) % GRID_COLS,
+          y: (newHead.y + GRID_ROWS) % GRID_ROWS,
+        };
+
+        // Rakı wobble: after the forward move, drift 1 cell sideways for a short time.
+        if (now < next.drunkUntil) {
+          const wobble = Math.random() < 0.5 ? -1 : 1;
+          if (direction.x !== 0) {
+            newHead = {
+              x: newHead.x,
+              y: (newHead.y + wobble + GRID_ROWS) % GRID_ROWS,
+            };
+          } else {
+            newHead = {
+              x: (newHead.x + wobble + GRID_COLS) % GRID_COLS,
+              y: newHead.y,
+            };
+          }
+        }
+
         const hitSelf = next.snake.some((part) => samePoint(part, newHead));
 
-        if (outOfBounds || hitSelf) {
+        if (hitSelf) {
           const overLine = randomFrom(DEATH_LINES);
           line = overLine;
           tone = "dead";
@@ -840,11 +824,18 @@ export function SnakeDonerGame() {
         let score = next.score;
         let speedBoostUntil = next.speedBoostUntil;
         let slowUntil = next.slowUntil;
-        let reverseUntil = next.reverseUntil;
         let freezeUntil = next.freezeUntil;
         let teaStreak = next.teaStreak;
         let food = next.food;
         let nazar = next.nazar;
+        let drunkUntil = next.drunkUntil;
+        let overlayKey: GameState["overlayKey"] = next.overlayKey;
+        let overlayUntil = next.overlayUntil;
+
+        if (overlayKey && now >= overlayUntil) {
+          overlayKey = null;
+          overlayUntil = 0;
+        }
 
         if (nazar && samePoint(newHead, nazar)) {
           speedBoostUntil = Math.max(speedBoostUntil, now + 3600);
@@ -892,13 +883,22 @@ export function SnakeDonerGame() {
               tone = "danger";
             }
           } else if (eaten === "ayran") {
-            reverseUntil = now + 4200;
-            line = "Köpük şoku. Kontroller ters!";
+            slowUntil = Math.max(slowUntil, now + 5000);
+            overlayKey = "ayran";
+            overlayUntil = now + 2000;
+            line = "Rehavet çöktü. 5 saniye yavaş!";
             tone = "danger";
             teaStreak = 0;
           } else if (eaten === "kahve") {
             line = randomFrom(FORTUNE_LINES);
             tone = "fortune";
+            teaStreak = 0;
+          } else if (eaten === "raki") {
+            drunkUntil = Math.max(drunkUntil, now + 5000);
+            overlayKey = "raki";
+            overlayUntil = now + 2000;
+            line = "Çok sarhoşsun. 5 saniye yalpalama!";
+            tone = "danger";
             teaStreak = 0;
           } else {
             line = randomFrom(EAT_LINES);
@@ -930,9 +930,11 @@ export function SnakeDonerGame() {
           bestScore: Math.max(next.bestScore, score),
           speedBoostUntil,
           slowUntil,
-          reverseUntil,
           freezeUntil,
           teaStreak,
+          drunkUntil,
+          overlayKey,
+          overlayUntil,
           lastStepAt: now,
         };
 
@@ -971,15 +973,15 @@ export function SnakeDonerGame() {
 
   const statusPills = [
     { label: speedLabel, active: true },
-    { label: isReversed ? "Kontroller ters" : "Kontroller normal", active: isReversed },
     { label: isFreeze ? "Çay molası (durdu)" : "Akış serbest", active: isFreeze },
+    { label: isDrunk ? "Sarhoş: yalpalıyor" : "Denge normal", active: isDrunk },
   ];
 
   return (
     <article className="soft-card snake-shell">
       <h2>Yılan Döner</h2>
       <p className="snake-subline">
-        Masaüstünde ok/WASD, telefonda swipe ile oyna. Duvar var, trafik var.
+        Masaüstünde ok/WASD, telefonda swipe ile oyna. Duvar yok: çerçeveden sarar.
       </p>
 
       <section className="snake-stats">
@@ -1009,6 +1011,31 @@ export function SnakeDonerGame() {
               height={BOARD_HEIGHT}
               className="snake-canvas"
             />
+
+            {game.phase === "running" && game.overlayKey && game.nowMs < game.overlayUntil ? (
+              <div className="snake-effect-overlay" aria-hidden="true">
+                <div className="snake-effect-card">
+                  <Image
+                    src={`/images/${game.overlayKey}.png`}
+                    alt=""
+                    width={960}
+                    height={540}
+                    unoptimized
+                    priority
+                  />
+                  <div className="snake-effect-fallback">
+                    <p className="snake-effect-title">
+                      {game.overlayKey === "ayran" ? "REHAVET ÇÖKTÜ!" : "ÇOK SARHOŞSUN!"}
+                    </p>
+                    <p className="snake-effect-sub">
+                      {game.overlayKey === "ayran"
+                        ? "Ayran içtin: kısa süre yavaş."
+                        : "Rakı içtin: kısa süre yalpalama."}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             {game.phase !== "running" ? (
               <div className="snake-overlay">
