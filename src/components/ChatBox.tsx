@@ -489,6 +489,11 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     () => tasks.filter((task) => !task.completed),
     [tasks]
   );
+
+  const myActiveTask = useMemo(
+    () => activeTasks.find((task) => isGoogleUser && task.uid === user?.uid),
+    [activeTasks, isGoogleUser, user]
+  );
   const completedTasks = useMemo(
     () => tasks.filter((task) => task.completed),
     [tasks]
@@ -1123,74 +1128,115 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
       {showTasks ? (
         <>
-          <section className="task-intake" aria-label="Yapılan işi paylaş">
-            <h3>Ne üzerinde çalışıyorsun?</h3>
-            <form className="chat-form" onSubmit={handleSendTask}>
-              <input
-                type="text"
-                placeholder={
-                  isGoogleUser
-                    ? "Örn: Ardıç vibecoding ile jeopolitik harita yapıyor."
-                    : mode === "tasks"
-                      ? "İş paylaşımı için Google ile giriş yap..."
-                      : "İş paylaşmak için Google ile giriş yap..."
-                }
-                value={taskDraft}
-                onChange={(event) =>
-                  setTaskDraft(event.target.value.slice(0, TASK_MAX_LENGTH))
-                }
-                disabled={!isGoogleUser}
-                maxLength={TASK_MAX_LENGTH}
-              />
-              <button type="submit" className="secondary-btn" disabled={!canSendTask}>
-                Paylaş
+          {myActiveTask ? (
+            <section className="task-card" style={{ background: "rgba(13, 34, 28, 0.6)", borderColor: "var(--accent-mint)" }}>
+              <div className="task-head">
+                <h3 style={{ margin: 0, color: "var(--accent-mint)" }}>Şu anki odak:</h3>
+                <span className="meta-line">{myActiveTask.createdAtLabel}</span>
+              </div>
+              <p className="task-text" style={{ fontSize: "1.2rem", margin: "12px 0" }}>
+                {renderTextWithLinks(myActiveTask.text)}
+              </p>
+
+              <button
+                type="button"
+                className="action-btn"
+                style={{ width: "100%", justifyContent: "center" }}
+                onClick={() => handleCompleteTask(myActiveTask)}
+                disabled={isCompletingTaskId === myActiveTask.id}
+              >
+                {isCompletingTaskId === myActiveTask.id ? "Bitiriliyor..." : "✓ Bitir ve Paylaş"}
               </button>
-            </form>
-            <p className="meta-line char-counter">
-              {taskDraft.length}/{TASK_MAX_LENGTH}
-            </p>
-          </section>
 
-          <section className="task-stats" aria-label="İş istatistikleri">
-            <span className="stats-pill">
-              Toplam iş: <strong>{stats.totalTasks}</strong>
-            </span>
-            <span className="stats-pill">
-              Tamamlanan iş: <strong>{stats.completedTasks}</strong>
-            </span>
-            <span className="stats-pill">
-              Devam eden: <strong>{stats.activeTasks}</strong>
-            </span>
-            <span className="stats-pill">
-              İş bitiren kişi: <strong>{stats.completedUserCount}</strong>
-            </span>
-          </section>
-
-          <section className="task-list" aria-label="Paylaşılan işler">
-            <div className="task-list-section">
-              <div className="task-section-head">
-                <h3>Aktif İşler</h3>
-                <span className="task-count-pill">{activeTasks.length}</span>
+              <div style={{ marginTop: "12px" }}>
+                <button
+                  type="button"
+                  className="ghost-btn task-comments-toggle"
+                  onClick={() => toggleTaskComments(myActiveTask.id)}
+                  aria-expanded={openTaskComments[myActiveTask.id]}
+                >
+                  {openTaskComments[myActiveTask.id] ? "Yorumları Gizle" : `Yorumlar (${taskCommentsByTask[myActiveTask.id]?.length ?? 0})`}
+                </button>
+                {openTaskComments[myActiveTask.id] ? (
+                  <div className="task-comments" style={{ marginTop: "8px" }}>
+                    {(taskCommentsByTask[myActiveTask.id] ?? []).map((comment) => (
+                      <article key={comment.id} className="task-comment">
+                        <div className="task-comment-head">
+                          <strong>{comment.displayName}</strong>
+                          <span>{comment.createdAtLabel}</span>
+                        </div>
+                        <p>{renderTextWithLinks(comment.text)}</p>
+                      </article>
+                    ))}
+                    <form className="chat-form" onSubmit={(event) => handleSendComment(event, myActiveTask.id)}>
+                      <input
+                        type="text"
+                        placeholder="Not ekle..."
+                        value={commentDrafts[myActiveTask.id] ?? ""}
+                        onChange={(event) =>
+                          handleCommentDraftChange(myActiveTask.id, event.target.value)
+                        }
+                        maxLength={TASK_COMMENT_MAX_LENGTH}
+                      />
+                      <button
+                        type="submit"
+                        className="secondary-btn"
+                        disabled={!(commentDrafts[myActiveTask.id]?.trim().length > 0)}
+                      >
+                        Ekle
+                      </button>
+                    </form>
+                  </div>
+                ) : null}
               </div>
-              {activeTasks.length === 0 ? (
-                <p className="meta-line">Aktif iş yok. Yeni bir iş paylaşabilirsin.</p>
-              ) : (
-                activeTasks.map((task) => renderTaskCard(task))
-              )}
-            </div>
+            </section>
+          ) : (
+            <section className="task-intake" aria-label="Yapılan işi paylaş">
+              <h3 style={{ fontSize: "1.4rem", marginBottom: "16px", textAlign: "center" }}>
+                Şu an neyle uğraşıyorsun? <br />
+                <span style={{ fontSize: "1rem", color: "var(--ink-muted)", fontWeight: "normal" }}>Ders? İş? Proje?</span>
+              </h3>
+              <form className="chat-form" onSubmit={handleSendTask} style={{ gridTemplateColumns: "1fr" }}>
+                <input
+                  type="text"
+                  placeholder={
+                    isGoogleUser
+                      ? "Örn: Tarih notlarını çıkarıyorum..."
+                      : "Giriş yap ve hedefini yaz..."
+                  }
+                  style={{ padding: "14px", fontSize: "1.1rem" }}
+                  value={taskDraft}
+                  onChange={(event) =>
+                    setTaskDraft(event.target.value.slice(0, TASK_MAX_LENGTH))
+                  }
+                  disabled={!isGoogleUser}
+                  maxLength={TASK_MAX_LENGTH}
+                />
+                <button
+                  type="submit"
+                  className="action-btn"
+                  disabled={!canSendTask}
+                  style={{ justifyContent: "center", padding: "12px" }}
+                >
+                  Başla
+                </button>
+              </form>
+            </section>
+          )}
 
-            <div className="task-list-section">
-              <div className="task-section-head">
-                <h3>Biten İşler</h3>
-                <span className="task-count-pill">{completedTasks.length}</span>
+          {activeTasks.length > (myActiveTask ? 1 : 0) ? (
+            <section style={{ marginTop: "20px", borderTop: "1px solid var(--line-soft)", paddingTop: "14px" }}>
+              <h4 style={{ margin: "0 0 10px", color: "var(--ink-muted)", fontSize: "0.9rem" }}>
+                Diğerleri ({activeTasks.length - (myActiveTask ? 1 : 0)})
+              </h4>
+              <div className="task-list" style={{ opacity: 0.8 }}>
+                {activeTasks
+                  .filter(t => t.id !== myActiveTask?.id)
+                  .slice(0, 3)
+                  .map(task => renderTaskCard(task))}
               </div>
-              {completedTasks.length === 0 ? (
-                <p className="meta-line">Henüz tamamlanan iş yok.</p>
-              ) : (
-                completedTasks.map((task) => renderTaskCard(task))
-              )}
-            </div>
-          </section>
+            </section>
+          ) : null}
         </>
       ) : null}
 

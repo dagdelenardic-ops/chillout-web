@@ -117,11 +117,9 @@ a {
   overflow: hidden;
   border-radius: 999px;
   padding: 8px;
-  background: linear-gradient(
-    120deg,
-    rgba(10, 20, 26, 0.62),
-    rgba(16, 28, 36, 0.48)
-  );
+  background: linear-gradient(120deg,
+      rgba(10, 20, 26, 0.62),
+      rgba(16, 28, 36, 0.48));
   border: 1px solid rgba(182, 227, 216, 0.28);
   box-shadow: 0 12px 24px rgba(3, 8, 12, 0.3);
   backdrop-filter: blur(16px);
@@ -181,11 +179,9 @@ a {
   width: 42px;
   height: 42px;
   border-color: transparent;
-  background: linear-gradient(
-    100deg,
-    rgba(109, 240, 194, 0.95),
-    rgba(255, 211, 115, 0.95)
-  );
+  background: linear-gradient(100deg,
+      rgba(109, 240, 194, 0.95),
+      rgba(255, 211, 115, 0.95));
   color: #032b25;
 }
 
@@ -272,20 +268,16 @@ a {
   position: absolute;
   inset: 0;
   background:
-    repeating-linear-gradient(
-      0deg,
+    repeating-linear-gradient(0deg,
       rgba(255, 255, 255, 0.02) 0px,
       rgba(255, 255, 255, 0.02) 1px,
       transparent 1px,
-      transparent 3px
-    ),
-    repeating-linear-gradient(
-      90deg,
+      transparent 3px),
+    repeating-linear-gradient(90deg,
       rgba(5, 10, 14, 0.08) 0px,
       rgba(5, 10, 14, 0.08) 2px,
       transparent 2px,
-      transparent 6px
-    );
+      transparent 6px);
   opacity: 0.14;
   animation: projector-flicker 9s steps(2, end) infinite;
   pointer-events: none;
@@ -1226,10 +1218,12 @@ label {
 }
 
 @keyframes projector-flicker {
+
   0%,
   100% {
     opacity: 0.44;
   }
+
   50% {
     opacity: 0.36;
   }
@@ -1239,12 +1233,14 @@ label {
   0% {
     transform: scale(1.04) translate3d(-1.4%, -0.8%, 0);
   }
+
   100% {
     transform: scale(1.08) translate3d(1.2%, 1%, 0);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
+
   .video-backdrop::before,
   .video-backdrop-media {
     animation: none;
@@ -1346,12 +1342,18 @@ label {
     width: 240px;
     height: 240px;
   }
-  
+
   .pomodoro-time {
     font-size: 2.6rem;
   }
-  
+
   .pomodoro-card {
     padding: 20px;
   }
+}
+
+.ring-progress {
+  transition: stroke-dashoffset 0.5s ease-in-out;
+  transform: rotate(-90deg);
+  transform-origin: 50% 50%;
 }

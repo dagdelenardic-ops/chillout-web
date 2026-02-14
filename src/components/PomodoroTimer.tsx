@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 
 const FOCUS_SECONDS = 25 * 60;
-const BREAK_SECONDS = 5 * 60;
+const BREAK_SECONDS = 5 * 60; // 5 minutes
 
 export type PomodoroPhase = "focus" | "break";
 
@@ -20,6 +20,40 @@ function formatTime(seconds: number): string {
   return `${minutes}:${remaining}`;
 }
 
+function playNotificationSound() {
+  try {
+    const AudioContext = window.AudioContext || (window as any).webkitAudioContext;
+    if (!AudioContext) return;
+
+    const ctx = new AudioContext();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(440, ctx.currentTime + 0.5);
+
+    gain.gain.setValueAtTime(0.3, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.5);
+
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.5);
+  } catch (e) {
+    console.error("Audio play failed", e);
+  }
+}
+
+function sendNotification(title: string, body: string) {
+  if (!("Notification" in window)) return;
+
+  if (Notification.permission === "granted") {
+    new Notification(title, { body, icon: "/favicon.ico" });
+  }
+}
+
 export function PomodoroTimer({
   onPhaseChange,
   onChatWriteChange,
@@ -28,6 +62,13 @@ export function PomodoroTimer({
   const [secondsLeft, setSecondsLeft] = useState(FOCUS_SECONDS);
   const [isRunning, setIsRunning] = useState(false);
   const [hasStartedPomodoro, setHasStartedPomodoro] = useState(false);
+
+  // Request notification permission on mount
+  useEffect(() => {
+    if ("Notification" in window && Notification.permission === "default") {
+      Notification.requestPermission();
+    }
+  }, []);
 
   const canWriteInChat = hasStartedPomodoro && phase === "break";
 
@@ -50,11 +91,18 @@ export function PomodoroTimer({
           return prev - 1;
         }
 
+        // Timer finished (reached 0)
+        playNotificationSound();
+
         if (phase === "focus") {
+          // Focus ended, start break
+          sendNotification("Odaklanma bitti!", "5 dakika dinlenme zamanı.");
           setPhase("break");
           return BREAK_SECONDS;
         }
 
+        // Break ended, reset to focus
+        sendNotification("Dinlenme bitti!", "Tekrar odaklanma zamanı.");
         setPhase("focus");
         setIsRunning(false);
         setHasStartedPomodoro(false);
