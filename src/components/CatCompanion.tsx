@@ -13,10 +13,12 @@ import {
 } from "./cat/personality";
 
 // =====================================================
-// State machine
+// Kedi artık tab bar'ın ÜZERİNDE yaşar: yavaş yürür,
+// yerçekimi + zıplama fiziği vardır, aktif sekmeye/imlece
+// tepki verir. Boşta serbest dolaşmaz.
 // =====================================================
 type CatState =
-  | "wandering"
+  | "wandering"        // bar üstünde bir noktaya yürüyor
   | "idle"
   | "seeking_food"
   | "eating"
@@ -25,15 +27,15 @@ type CatState =
   | "annoyed"
   | "sleeping"
   | "pooping"
-  | "zoomies"          // delice koşma - rastgele hedefler
+  | "zoomies"
   | "leaving"
   | "gone";
 
 interface Poop { id: number; x: number; y: number; createdAt: number; }
 const POOP_LIFETIME_MS = 45_000;
-const POOP_CHECK_MS = 25_000;       // her 25sn'de kontrol
-const POOP_CHANCE = 0.18;           // %18 ihtimal -> ortalama ~140sn'de bir
-const POOP_DURATION_MS = 3500;      // kakası sırasında bekleme
+const POOP_CHECK_MS = 28_000;
+const POOP_CHANCE = 0.14;
+const POOP_DURATION_MS = 3500;
 
 type Direction = "left" | "right";
 interface Pos { x: number; y: number; }
@@ -44,30 +46,39 @@ const HUNGER_INC_MS = 6000;
 const AFFECTION_DEC_MS = 5000;
 const STORAGE_KEY = "chillout-cat-v2";
 
-// === bounds: kedi hep alt yarıda, ekran içinde ===
-function getBounds() {
-  if (typeof window === "undefined") return { minX: 60, maxX: 1200, minY: 300, maxY: 700 };
-  const W = window.innerWidth;
-  const H = window.innerHeight;
-  return {
-    minX: 60,
-    maxX: W - 60,
-    minY: Math.max(180, H * 0.45),     // ust yarıdan asagı
-    maxY: H - 80,                      // dipten yukari biraz
-  };
+// === Fizik sabitleri ===
+const GRAVITY = 0.55;        // kare başına (16ms) ivme
+const HOP_V = 4.6;           // zıplama başlangıç hızı
+const GROUND_GAP = 14;       // kedi merkezinin bar üstünden yüksekliği
+const MIN_Y = 34;            // ekran tepesinden taşmasın
+const X_MARGIN = 12;
+const SLOW_WALK = 0.34;      // çok yavaş yürüyüş (eski 1.5 idi)
+const SETTLE_LERP = 0.4;     // bara yumuşak oturma (yay hissi)
+
+interface Bar { left: number; right: number; top: number; activeCx: number; }
+
+function readBar(): Bar | null {
+  if (typeof document === "undefined") return null;
+  const nav = document.querySelector(".tab-nav") as HTMLElement | null;
+  if (!nav) return null;
+  const r = nav.getBoundingClientRect();
+  if (r.width < 10) return null;
+  let activeCx = r.left + r.width / 2;
+  const active = nav.querySelector(".tab-btn.active") as HTMLElement | null;
+  if (active) {
+    const ar = active.getBoundingClientRect();
+    activeCx = ar.left + ar.width / 2;
+  }
+  return { left: r.left, right: r.right, top: r.top, activeCx };
 }
 
-function rand(min: number, max: number) {
-  return Math.random() * (max - min) + min;
-}
-function clamp(v: number, lo: number, hi: number) {
-  return Math.max(lo, Math.min(hi, v));
-}
-function wrapAngle(a: number) {
-  while (a > Math.PI)  a -= 2 * Math.PI;
-  while (a < -Math.PI) a += 2 * Math.PI;
-  return a;
-}
+function groundY(b: Bar) { return Math.max(MIN_Y, b.top - GROUND_GAP); }
+function xMin(b: Bar) { return b.left + X_MARGIN; }
+function xMax(b: Bar) { return b.right - X_MARGIN; }
+
+function rand(min: number, max: number) { return Math.random() * (max - min) + min; }
+function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
+function distance(a: Pos, b: Pos) { const dx = a.x - b.x, dy = a.y - b.y; return Math.sqrt(dx * dx + dy * dy); }
 
 function poseFor(state: CatState, isMoving: boolean, action: IdleAction): Pose {
   if (action === "loafing" || action === "tail_chasing") return "sitting";
@@ -78,7 +89,7 @@ function poseFor(state: CatState, isMoving: boolean, action: IdleAction): Pose {
     case "sleeping":      return "lying";
     case "eating":        return "eating";
     case "annoyed":       return "alert";
-    case "chasing_laser": return "running";
+    case "chasing_laser": return "alert";
     case "zoomies":       return "running";
     case "being_petted":  return "sitting";
     case "pooping":       return "sitting";
@@ -89,11 +100,9 @@ function poseFor(state: CatState, isMoving: boolean, action: IdleAction): Pose {
 }
 
 // =====================================================
-// Component
-// =====================================================
 export function CatCompanion() {
   const [mounted, setMounted] = useState(false);
-  const [pos, setPos] = useState<Pos>({ x: 200, y: 400 });
+  const [pos, setPos] = useState<Pos>({ x: 200, y: 120 });
   const [target, setTarget] = useState<Pos | null>(null);
   const [state, setState] = useState<CatState>("idle");
   const [direction, setDirection] = useState<Direction>("right");
@@ -101,7 +110,7 @@ export function CatCompanion() {
   const [affection, setAffection] = useState(45);
   const [bubble, setBubble] = useState<string | null>(null);
   const [foodAmount, setFoodAmount] = useState(0);
-  const [foodPos, setFoodPos] = useState<Pos>({ x: 80, y: 0 });
+  const [foodPos, setFoodPos] = useState<Pos>({ x: 80, y: 120 });
   const [laserActive, setLaserActive] = useState(false);
   const [laserPos, setLaserPos] = useState<Pos>({ x: 0, y: 0 });
   const [blinking, setBlinking] = useState(false);
@@ -110,13 +119,14 @@ export function CatCompanion() {
   const [pupilDilate, setPupilDilate] = useState(false);
   const [isMoving, setIsMoving] = useState(false);
   const [idleAction, setIdleAction] = useState<IdleAction>(null);
+  const [airborne, setAirborne] = useState(false);
+  const [squash, setSquash] = useState(false);
 
   const [name, setName] = useState<string>("");
   const [personality, setPersonality] = useState<Personality>("sevecen");
   const [poops, setPoops] = useState<Poop[]>([]);
 
-  // === Motion refs ===
-  const headingRef = useRef(0);  // radians
+  // === refs ===
   const stateRef = useRef(state);
   const posRef = useRef(pos);
   const targetRef = useRef(target);
@@ -126,8 +136,13 @@ export function CatCompanion() {
   const recentPetsRef = useRef<number[]>([]);
   const animationRef = useRef<number | null>(null);
   const bubbleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const wobbleSeedRef = useRef(Math.random() * 1000);
   const persRef = useRef<Personality>("sevecen");
+  const barRef = useRef<Bar | null>(null);
+  const foodPosRef = useRef<Pos>({ x: 80, y: 120 });
+  const lastBowlRef = useRef<Pos | null>(null);
+  const vyRef = useRef(0);
+  const airborneRef = useRef(false);
+  const squashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { posRef.current = pos; }, [pos]);
@@ -135,7 +150,20 @@ export function CatCompanion() {
   useEffect(() => { laserRef.current = { active: laserActive, x: laserPos.x, y: laserPos.y }; }, [laserActive, laserPos]);
   useEffect(() => { persRef.current = personality; }, [personality]);
 
-  // === Mount: pick personality, name, position ===
+  const triggerSquash = useCallback(() => {
+    setSquash(true);
+    if (squashTimerRef.current) clearTimeout(squashTimerRef.current);
+    squashTimerRef.current = setTimeout(() => setSquash(false), 220);
+  }, []);
+
+  const doHop = useCallback(() => {
+    if (airborneRef.current) return;
+    airborneRef.current = true;
+    vyRef.current = -HOP_V;
+    setAirborne(true);
+  }, []);
+
+  // === Mount ===
   useEffect(() => {
     if (typeof window === "undefined") return;
     setMounted(true);
@@ -147,7 +175,7 @@ export function CatCompanion() {
       if (raw) {
         const parsed = JSON.parse(raw);
         savedName = typeof parsed.name === "string" ? parsed.name : "";
-        savedPers = ["tembel","yaramaz","meraklı","sevecen"].includes(parsed.pers) ? parsed.pers : "";
+        savedPers = ["tembel", "yaramaz", "meraklı", "sevecen"].includes(parsed.pers) ? parsed.pers : "";
       }
     } catch { /* ignore */ }
 
@@ -159,20 +187,20 @@ export function CatCompanion() {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: finalName, pers: finalPers }));
     } catch { /* ignore */ }
 
-    const b = getBounds();
-    setPos({ x: rand(b.minX + 100, b.maxX - 100), y: rand(b.minY + 50, b.maxY - 50) });
-    // Mama kasesi bottom-left, cat-controls toggle'in hemen sağında
-    setFoodPos({ x: 90, y: window.innerHeight - 36 });
-    headingRef.current = 0;
+    // Bara yerleş (yoksa geçici nokta; döngü oturtur)
+    const b = readBar();
+    if (b) {
+      barRef.current = b;
+      setPos({ x: (xMin(b) + xMax(b)) / 2, y: groundY(b) });
+    }
 
-    // Greet bubble after small delay
     setTimeout(() => {
       setBubble(`Selam, ben ${finalName}!`);
       bubbleTimerRef.current = setTimeout(() => setBubble(null), 2600);
     }, 800);
   }, []);
 
-  // === Cursor tracking globally for awareness ===
+  // === Cursor tracking ===
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       cursorRef.current = { x: e.clientX, y: e.clientY };
@@ -194,7 +222,6 @@ export function CatCompanion() {
     };
   }, []);
 
-  // Bubble helper
   const showBubble = useCallback((text: string, ms = 2200) => {
     setBubble(text);
     if (bubbleTimerRef.current) clearTimeout(bubbleTimerRef.current);
@@ -204,21 +231,20 @@ export function CatCompanion() {
     showBubble(pickBubble(ctx), ms);
   }, [showBubble]);
 
-  // === Hunger / affection ticks ===
+  // === Hunger / affection ===
   useEffect(() => {
     const hungerId = setInterval(() => setHunger((h) => Math.min(100, h + 1)), HUNGER_INC_MS);
     const affId = setInterval(() => setAffection((a) => Math.max(0, a - 1)), AFFECTION_DEC_MS);
     return () => { clearInterval(hungerId); clearInterval(affId); };
   }, []);
 
-  // === Random blinks (more frequent when alert) ===
+  // === Blinks ===
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
     const sched = () => {
       timeout = setTimeout(() => {
         setBlinking(true);
         setTimeout(() => setBlinking(false), 130);
-        // Sometimes double-blink
         if (Math.random() < 0.25) {
           setTimeout(() => {
             setBlinking(true);
@@ -232,7 +258,7 @@ export function CatCompanion() {
     return () => clearTimeout(timeout);
   }, []);
 
-  // === Random ear twitches ===
+  // === Ear twitches ===
   useEffect(() => {
     let timeout: ReturnType<typeof setTimeout>;
     const sched = () => {
@@ -246,7 +272,7 @@ export function CatCompanion() {
     return () => clearTimeout(timeout);
   }, []);
 
-  // === Random Turkish bubble (idle chatter, personality-paced) ===
+  // === Idle chatter bubbles ===
   useEffect(() => {
     if (!mounted) return;
     let timeout: ReturnType<typeof setTimeout>;
@@ -254,9 +280,7 @@ export function CatCompanion() {
     const sched = () => {
       timeout = setTimeout(() => {
         const s = stateRef.current;
-        // Don't spam bubbles in busy states
         if (s !== "eating" && s !== "leaving" && s !== "gone" && s !== "annoyed") {
-          // Pick context based on stats
           let ctx: BubbleContext = "bored";
           if (hunger > 70) ctx = "hungry";
           else if (s === "sleeping") ctx = "sleepy";
@@ -273,7 +297,7 @@ export function CatCompanion() {
     return () => clearTimeout(timeout);
   }, [mounted, personality, hunger, showCtxBubble]);
 
-  // === Idle micro-actions (look/lick/groom/yawn/knead + silly) ===
+  // === Idle micro-actions ===
   useEffect(() => {
     if (!mounted) return;
     if (state !== "idle" && state !== "being_petted") return;
@@ -284,71 +308,32 @@ export function CatCompanion() {
         const s = stateRef.current;
         if (s !== "idle" && s !== "being_petted") return;
 
-        // Silliness probability boost for yaramaz/meraklı
-        const sillyChance = 0.35 + cfg.playfulness * 0.25;
+        const sillyChance = 0.32 + cfg.playfulness * 0.22;
         const r = Math.random();
         let action: IdleAction = null;
         let bubbleCtx: BubbleContext | null = null;
         let durationMs = 1800;
 
-        // Petted-only kneading
         if (s === "being_petted" && r < 0.4) {
-          action = "kneading";
-          bubbleCtx = "purr";
-          durationMs = 2200;
-        }
-        // Salaklık branch
-        else if (r < sillyChance) {
-          // Pick random silly action
+          action = "kneading"; bubbleCtx = "purr"; durationMs = 2200;
+        } else if (r < sillyChance) {
           const sillyR = Math.random();
-          if (sillyR < 0.16) {
-            action = "tail_chasing";
-            bubbleCtx = "tail_chase";
-            durationMs = 2400;
-          } else if (sillyR < 0.32) {
-            action = "staring";
-            bubbleCtx = "freeze";
-            setPupilDilate(true);
-            setTimeout(() => setPupilDilate(false), 2400);
-            durationMs = 2600;
-          } else if (sillyR < 0.50) {
-            action = "loafing";
-            bubbleCtx = "loaf";
-            durationMs = 4500;
-          } else if (sillyR < 0.68) {
-            action = "swatting";
-            bubbleCtx = "swat";
-            durationMs = 1600;
-          } else if (sillyR < 0.85) {
-            action = "slipping";
-            bubbleCtx = "slip";
-            durationMs = 1400;
-          } else {
-            action = "derp";
-            bubbleCtx = "derp";
-            setMouthOpen(true);
-            setTimeout(() => setMouthOpen(false), 1500);
-            durationMs = 2000;
+          if (sillyR < 0.18) { action = "tail_chasing"; bubbleCtx = "tail_chase"; durationMs = 2400; }
+          else if (sillyR < 0.36) {
+            action = "staring"; bubbleCtx = "freeze";
+            setPupilDilate(true); setTimeout(() => setPupilDilate(false), 2400); durationMs = 2600;
+          } else if (sillyR < 0.56) { action = "loafing"; bubbleCtx = "loaf"; durationMs = 4500; }
+          else if (sillyR < 0.74) { action = "swatting"; bubbleCtx = "swat"; durationMs = 1600; }
+          else {
+            action = "derp"; bubbleCtx = "derp";
+            setMouthOpen(true); setTimeout(() => setMouthOpen(false), 1500); durationMs = 2000;
           }
-        }
-        // Normal grooming branch
-        else if (r < sillyChance + 0.15) {
-          action = "looking";
-          durationMs = 1500;
-        } else if (r < sillyChance + 0.35) {
-          action = "licking";
-          bubbleCtx = "groom";
-          durationMs = 2000;
-        } else if (r < sillyChance + 0.55) {
-          action = "grooming";
-          bubbleCtx = "groom";
-          durationMs = 2200;
-        } else if (cfg.sleepiness > 0.25) {
-          action = "yawning";
-          bubbleCtx = "stretch";
-          setMouthOpen(true);
-          setTimeout(() => setMouthOpen(false), 700);
-          durationMs = 1800;
+        } else if (r < sillyChance + 0.18) { action = "looking"; durationMs = 1500; }
+        else if (r < sillyChance + 0.4) { action = "licking"; bubbleCtx = "groom"; durationMs = 2000; }
+        else if (r < sillyChance + 0.6) { action = "grooming"; bubbleCtx = "groom"; durationMs = 2200; }
+        else if (cfg.sleepiness > 0.25) {
+          action = "yawning"; bubbleCtx = "stretch";
+          setMouthOpen(true); setTimeout(() => setMouthOpen(false), 700); durationMs = 1800;
         }
 
         if (action) {
@@ -363,92 +348,83 @@ export function CatCompanion() {
     return () => clearTimeout(timeout);
   }, [mounted, state, personality, showCtxBubble]);
 
-  // === ZOOMIES: random sudden burst of running ===
+  // === Zoomies (tame, bar üstünde) ===
   useEffect(() => {
     if (state === "gone") return;
     const cfg = PERSONALITIES[personality];
     const id = setInterval(() => {
       const s = stateRef.current;
       if (s !== "idle" && s !== "wandering") return;
-      // Probability scales with playfulness
-      if (Math.random() < cfg.playfulness * 0.18) {
+      if (Math.random() < cfg.playfulness * 0.09) {
         setState("zoomies");
         showCtxBubble("zoomies", 1500);
       }
-    }, 22000);
+    }, 26000);
     return () => clearInterval(id);
   }, [state, personality, showCtxBubble]);
 
-  // === Zoomies execution: rapid random targets for ~4 seconds ===
   useEffect(() => {
     if (state !== "zoomies") return;
     let count = 0;
-    const maxBursts = 5;
-    const pickZoomTarget = () => {
-      const b = getBounds();
-      setTarget({
-        x: rand(b.minX + 80, b.maxX - 80),
-        y: rand(b.minY + 40, b.maxY - 40),
-      });
+    const maxBursts = 3;
+    const pickZoom = () => {
+      const b = barRef.current; if (!b) return;
+      setTarget({ x: rand(xMin(b), xMax(b)), y: groundY(b) });
+      doHop();
     };
-    pickZoomTarget();
+    pickZoom();
     const burstId = setInterval(() => {
       count++;
-      if (count >= maxBursts) {
-        clearInterval(burstId);
-        return;
-      }
-      pickZoomTarget();
-    }, 650);
+      if (count >= maxBursts) { clearInterval(burstId); return; }
+      pickZoom();
+    }, 900);
     const endId = setTimeout(() => {
       clearInterval(burstId);
       setState("idle");
       setTarget(null);
-      // Confused after-effect
       setIdleAction("derp");
       showCtxBubble("derp", 1600);
       setTimeout(() => setIdleAction(null), 1700);
-    }, 4200);
-    return () => {
-      clearInterval(burstId);
-      clearTimeout(endId);
-    };
-  }, [state, showCtxBubble]);
+    }, 3600);
+    return () => { clearInterval(burstId); clearTimeout(endId); };
+  }, [state, showCtxBubble, doHop]);
 
-  // === Cursor awareness when idle (look toward cursor) ===
+  // === İmleç farkındalığı: bara yakınsa imleci izle (zeki) ===
   useEffect(() => {
-    if (state !== "idle") return;
+    if (state !== "idle" && state !== "wandering") return;
     const cfg = PERSONALITIES[personality];
-    if (cfg.curiosity < 0.4) return;
     const id = setInterval(() => {
       const c = cursorRef.current;
-      if (!c) return;
-      const cur = posRef.current;
-      const d = distance(cur, c);
-      if (d < 250 && Date.now() - lastCursorMoveRef.current < 1500) {
-        // Face the cursor
-        setDirection(c.x > cur.x ? "right" : "left");
-        setPupilDilate(true);
-        setTimeout(() => setPupilDilate(false), 1400);
+      const b = barRef.current;
+      if (!c || !b) return;
+      const gY = groundY(b);
+      const near = Math.abs(c.y - gY) < 150 && c.x > xMin(b) - 80 && c.x < xMax(b) + 80;
+      if (near && Date.now() - lastCursorMoveRef.current < 1600) {
+        setDirection(c.x > posRef.current.x ? "right" : "left");
+        if (cfg.curiosity > 0.45 && Math.random() < 0.6) {
+          setState("wandering");
+          setTarget({ x: clamp(c.x, xMin(b), xMax(b)), y: gY });
+          setPupilDilate(true);
+          setTimeout(() => setPupilDilate(false), 1200);
+        }
       }
-    }, 800);
+    }, 900);
     return () => clearInterval(id);
   }, [state, personality]);
 
-  // === High-level decision making ===
+  // === High-level decisions (bar üstünde) ===
   useEffect(() => {
     if (state === "gone") {
       const id = setTimeout(() => {
-        if (typeof window === "undefined") return;
+        const b = readBar();
         const fromLeft = Math.random() < 0.5;
-        const b = getBounds();
-        setPos({
-          x: fromLeft ? -80 : window.innerWidth + 80,
-          y: rand(b.minY + 40, b.maxY - 40),
-        });
+        if (b) {
+          barRef.current = b;
+          setPos({ x: fromLeft ? xMin(b) : xMax(b), y: groundY(b) });
+        }
         setDirection(fromLeft ? "right" : "left");
-        headingRef.current = fromLeft ? 0 : Math.PI;
         setState("wandering");
+        if (b) setTarget({ x: (xMin(b) + xMax(b)) / 2, y: groundY(b) });
         setHunger(50);
         setAffection(50);
         showCtxBubble("greet", 2400);
@@ -460,59 +436,50 @@ export function CatCompanion() {
 
     const decisionId = setInterval(() => {
       const s = stateRef.current;
-      if (s === "eating" || s === "annoyed" || s === "leaving" || s === "gone" || s === "being_petted" || s === "pooping" || s === "zoomies") return;
+      if (s === "eating" || s === "annoyed" || s === "leaving" || s === "gone" ||
+          s === "being_petted" || s === "pooping" || s === "zoomies" ||
+          s === "chasing_laser" || s === "seeking_food") return;
 
-      // Laser dominates
-      if (laserRef.current.active) {
-        if (s !== "chasing_laser") {
-          setState("chasing_laser");
-          showCtxBubble("playful", 1200);
-        }
-        return;
-      }
+      const b = barRef.current; if (!b) return;
+      const gY = groundY(b);
 
-      // Hungry?
+      if (laserRef.current.active) return;
+
       if (hunger > 60 && foodAmount > 0) {
         setState("seeking_food");
-        setTarget({ x: foodPos.x + 18, y: foodPos.y - 8 });
+        setTarget({ x: clamp(foodPosRef.current.x, xMin(b), xMax(b)), y: gY });
         showCtxBubble("hungry", 1500);
         return;
       }
 
-      // Sleep?
-      if (affection > 65 && hunger < 35 && Math.random() < cfg.sleepiness * 0.55) {
+      if (affection > 65 && hunger < 35 && Math.random() < cfg.sleepiness * 0.5) {
         setState("sleeping");
         setTarget(null);
         showCtxBubble("sleepy", 3200);
         return;
       }
 
-      // From idle: maybe wander
+      const r = Math.random();
+      const pickX = () => {
+        // %35 aktif sekmenin üstüne otur (zeki davranış)
+        if (Math.random() < 0.35) return clamp(b.activeCx + rand(-16, 16), xMin(b), xMax(b));
+        return rand(xMin(b), xMax(b));
+      };
+
       if (s === "idle" || s === "sleeping") {
-        if (s === "sleeping" && Math.random() > 0.4) return; // stay sleeping more often
-        const b = getBounds();
+        if (s === "sleeping" && Math.random() > 0.4) return;
+        if (r < 0.42) return; // dur, otur
         setState("wandering");
-        setTarget({
-          x: rand(b.minX + 40, b.maxX - 40),
-          y: rand(b.minY + 30, b.maxY - 30),
-        });
+        setTarget({ x: pickX(), y: gY });
+        if (r > 0.85) doHop(); // bazen zıplayarak gider
       } else if (s === "wandering") {
-        // 40% pause when reaching target
-        if (Math.random() < 0.4) {
-          setState("idle");
-          setTarget(null);
-        } else {
-          const b = getBounds();
-          setTarget({
-            x: rand(b.minX + 40, b.maxX - 40),
-            y: rand(b.minY + 30, b.maxY - 30),
-          });
-        }
+        if (Math.random() < 0.5) { setState("idle"); setTarget(null); }
+        else setTarget({ x: pickX(), y: gY });
       }
-    }, 4000);
+    }, 3800);
 
     return () => clearInterval(decisionId);
-  }, [state, hunger, foodAmount, foodPos.x, foodPos.y, personality, showCtxBubble]);
+  }, [state, hunger, foodAmount, personality, showCtxBubble, doHop]);
 
   // === Wake from sleep ===
   useEffect(() => {
@@ -537,33 +504,46 @@ export function CatCompanion() {
     return () => clearTimeout(id);
   }, [state, showCtxBubble]);
 
-  // === Pooping urge: random check, only triggers when calm ===
+  // === Laser: chase yalnız bar üstünde (zıplayıp uzanır) ===
+  useEffect(() => {
+    if (!laserActive) return;
+    if (state === "leaving" || state === "gone" || state === "eating") return;
+    setState("chasing_laser");
+    const swatId = setInterval(() => {
+      if (!laserRef.current.active) return;
+      if (Math.random() < 0.5) doHop();
+    }, 1400);
+    return () => clearInterval(swatId);
+  }, [laserActive, state, doHop]);
+
+  useEffect(() => {
+    if (state === "chasing_laser" && !laserActive) {
+      setState("idle");
+      setTarget(null);
+    }
+  }, [laserActive, state]);
+
+  // === Pooping ===
   useEffect(() => {
     if (state === "gone") return;
     const id = setInterval(() => {
       const s = stateRef.current;
-      // Only trigger when chill states
       if (s !== "idle" && s !== "wandering") return;
-      if (Math.random() < POOP_CHANCE) {
-        setTarget(null);
-        setState("pooping");
-      }
+      if (Math.random() < POOP_CHANCE) { setTarget(null); setState("pooping"); }
     }, POOP_CHECK_MS);
     return () => clearInterval(id);
   }, [state]);
 
-  // === Pooping action: stop, do the deed, drop poop, idle ===
   useEffect(() => {
     if (state !== "pooping") return;
     showCtxBubble("potty_pre", POOP_DURATION_MS - 200);
     const id = setTimeout(() => {
       const cur = posRef.current;
-      // Place poop slightly behind the cat (behind = opposite of direction)
       const offset = direction === "right" ? -22 : 22;
       const newPoop: Poop = {
         id: Date.now() + Math.random(),
         x: cur.x + offset,
-        y: cur.y + 18,
+        y: cur.y + 26, // barın hemen altına düşer
         createdAt: Date.now(),
       };
       setPoops((p) => [...p, newPoop]);
@@ -573,7 +553,6 @@ export function CatCompanion() {
     return () => clearTimeout(id);
   }, [state, direction, showCtxBubble]);
 
-  // === Auto-cleanup poops after lifetime ===
   useEffect(() => {
     const id = setInterval(() => {
       const now = Date.now();
@@ -592,14 +571,13 @@ export function CatCompanion() {
     if (state !== "leaving" || typeof window === "undefined") return;
     const exitLeft = posRef.current.x < window.innerWidth / 2;
     setTarget({ x: exitLeft ? -120 : window.innerWidth + 120, y: posRef.current.y });
-    headingRef.current = exitLeft ? Math.PI : 0;
     setDirection(exitLeft ? "left" : "right");
     showCtxBubble("exit", 1800);
     const id = setTimeout(() => setState("gone"), 6500);
     return () => clearTimeout(id);
   }, [state, showCtxBubble]);
 
-  // === Movement loop with steering + bounds ===
+  // === Movement loop: ledge walk + gravity/hop ===
   useEffect(() => {
     if (state === "gone") {
       if (animationRef.current) cancelAnimationFrame(animationRef.current);
@@ -608,121 +586,94 @@ export function CatCompanion() {
     let last = performance.now();
 
     const tick = (now: number) => {
-      const dt = Math.min(40, now - last);
-      last = now;
+      const dt = Math.min(40, now - last); last = now;
+      const f = dt / 16;
 
+      const liveBar = readBar();
+      if (liveBar) barRef.current = liveBar;
+      const b = barRef.current;
       const s = stateRef.current;
-      let tgt = targetRef.current;
-
-      // Laser overrides target
-      if (s === "chasing_laser") {
-        if (laserRef.current.active) {
-          tgt = { x: laserRef.current.x, y: laserRef.current.y - 10 };
-        } else {
-          setState("idle");
-          setIsMoving(false);
-          animationRef.current = requestAnimationFrame(tick);
-          return;
-        }
-      }
-
-      // No movement states
-      if (!tgt || s === "sleeping" || s === "eating" || s === "being_petted" || s === "idle" || s === "annoyed" || s === "pooping") {
-        setIsMoving(false);
-        animationRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
-      const cfg = PERSONALITIES[persRef.current];
       const cur = posRef.current;
-      const dx = tgt.x - cur.x;
-      const dy = tgt.y - cur.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
 
-      // Speed by state
-      let baseSpeed: number;
-      if (s === "chasing_laser") baseSpeed = 4.0;
-      else if (s === "zoomies")  baseSpeed = 5.0;
-      else if (s === "leaving")  baseSpeed = 2.6;
-      else baseSpeed = 1.5 * cfg.speedMult;
+      if (!b) { setIsMoving(false); animationRef.current = requestAnimationFrame(tick); return; }
 
-      const step = (baseSpeed * dt) / 16;
+      const gY = groundY(b);
+      const lo = xMin(b), hi = xMax(b);
 
-      // Arrived?
-      if (dist < step + 6) {
-        if (s === "seeking_food") {
-          setState("eating");
-          setTarget(null);
-        } else if (s === "leaving") {
-          // continue offscreen
-        } else if (s === "chasing_laser") {
-          // hover near laser, do not stop
-        } else if (s === "wandering") {
-          setState("idle");
-          setTarget(null);
+      // mama kasesini barın sol ucuna sabitle (sadece değişince render)
+      const bowl = { x: clamp(lo + 4, lo, hi), y: gY + 12 };
+      foodPosRef.current = bowl;
+      const lb = lastBowlRef.current;
+      if (!lb || Math.abs(bowl.x - lb.x) > 0.5 || Math.abs(bowl.y - lb.y) > 0.5) {
+        lastBowlRef.current = bowl;
+        setFoodPos(bowl);
+      }
+
+      // === dikey fizik ===
+      let ny: number;
+      if (airborneRef.current) {
+        vyRef.current += GRAVITY * f;
+        ny = cur.y + vyRef.current * f;
+        if (ny >= gY) {
+          ny = gY; airborneRef.current = false; vyRef.current = 0;
+          setAirborne(false); triggerSquash();
         }
-        setIsMoving(false);
-        animationRef.current = requestAnimationFrame(tick);
-        return;
+      } else {
+        ny = cur.y + (gY - cur.y) * SETTLE_LERP; // yumuşak oturma + scroll takibi
       }
 
-      // === Steering: turn toward target gradually ===
-      const desiredHeading = Math.atan2(dy, dx);
-      const diff = wrapAngle(desiredHeading - headingRef.current);
-      const TURN_RATE =
-        s === "chasing_laser" ? 0.18 :
-        s === "zoomies" ? 0.30 :          // delice savruluyor
-        0.08;
-      headingRef.current += clamp(diff, -TURN_RATE, TURN_RATE);
+      // === yatay ===
+      const moveBlocked =
+        s === "sleeping" || s === "eating" || s === "being_petted" ||
+        s === "idle" || s === "annoyed" || s === "pooping";
 
-      // === Wobble for natural motion ===
-      let wHead = headingRef.current;
-      if (s === "wandering" || s === "seeking_food") {
-        const t = (now / 700) + wobbleSeedRef.current;
-        wHead += Math.sin(t) * 0.07;
+      let nx = cur.x;
+      let movingNow = false;
+
+      if (s === "leaving" && targetRef.current) {
+        const dxh = targetRef.current.x - cur.x;
+        nx = cur.x + Math.sign(dxh) * 0.95 * f;
+        movingNow = true;
+        if (Math.abs(dxh) > 1) setDirection(dxh > 0 ? "right" : "left");
+      } else if (!moveBlocked) {
+        let tx: number | null = null;
+        if (s === "chasing_laser" && laserRef.current.active) {
+          tx = clamp(laserRef.current.x, lo, hi);
+        } else if (targetRef.current) {
+          tx = clamp(targetRef.current.x, lo, hi);
+        }
+        if (tx !== null) {
+          const dxh = tx - cur.x;
+          let speed: number;
+          if (s === "chasing_laser") speed = 0.7;
+          else if (s === "zoomies") speed = 1.05;
+          else speed = SLOW_WALK * PERSONALITIES[persRef.current].speedMult;
+          const stepx = speed * f;
+          if (Math.abs(dxh) <= stepx) {
+            nx = tx;
+            if (Math.abs(dxh) < 2 && !airborneRef.current) {
+              if (s === "seeking_food") { setState("eating"); setTarget(null); }
+              else if (s === "wandering") { setState("idle"); setTarget(null); }
+            }
+          } else {
+            nx = cur.x + Math.sign(dxh) * stepx;
+            movingNow = true;
+          }
+          if (Math.abs(dxh) > 1) setDirection(dxh > 0 ? "right" : "left");
+        }
       }
 
-      const vx = Math.cos(wHead) * step;
-      const vy = Math.sin(wHead) * step;
-
-      let nx = cur.x + vx;
-      let ny = cur.y + vy;
-
-      // === Bounds: hard clamp + force new target if hit edge ===
-      const b = getBounds();
-      let bumped = false;
-
-      // Allow leaving state to go offscreen
-      if (s !== "leaving") {
-        if (nx < b.minX) { nx = b.minX; bumped = true; }
-        if (nx > b.maxX) { nx = b.maxX; bumped = true; }
-        if (ny < b.minY) { ny = b.minY; bumped = true; }
-        if (ny > b.maxY) { ny = b.maxY; bumped = true; }
+      if (Math.abs(nx - cur.x) > 0.05 || Math.abs(ny - cur.y) > 0.05) {
+        setPos({ x: nx, y: ny });
       }
-
-      if (bumped && s !== "chasing_laser") {
-        // Pick target away from edge so cat turns around
-        setTarget({
-          x: rand(b.minX + 100, b.maxX - 100),
-          y: rand(b.minY + 50, b.maxY - 50),
-        });
-        // Show small confused bubble occasionally
-        if (Math.random() < 0.2) showCtxBubble("curious", 1200);
-      }
-
-      setPos({ x: nx, y: ny });
-      setIsMoving(true);
-      // Direction follows actual horizontal motion
-      if (Math.abs(vx) > 0.05) setDirection(vx > 0 ? "right" : "left");
+      setIsMoving(movingNow || airborneRef.current);
 
       animationRef.current = requestAnimationFrame(tick);
     };
 
     animationRef.current = requestAnimationFrame(tick);
-    return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
-    };
-  }, [state, showCtxBubble]);
+    return () => { if (animationRef.current) cancelAnimationFrame(animationRef.current); };
+  }, [state, triggerSquash]);
 
   // === Eating ===
   useEffect(() => {
@@ -739,16 +690,6 @@ export function CatCompanion() {
   useEffect(() => {
     if (state === "eating" && foodAmount === 0) setState("idle");
   }, [foodAmount, state]);
-
-  // === Reposition food bowl on resize ===
-  useEffect(() => {
-    const onResize = () => {
-      if (typeof window === "undefined") return;
-      setFoodPos({ x: 90, y: window.innerHeight - 36 });
-    };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
-  }, []);
 
   // === Interactions ===
   const fillFoodBowl = useCallback(() => {
@@ -767,10 +708,7 @@ export function CatCompanion() {
 
   const petCat = useCallback(() => {
     if (state === "leaving" || state === "gone") return;
-    if (state === "annoyed") {
-      showCtxBubble("annoyed", 1200);
-      return;
-    }
+    if (state === "annoyed") { showCtxBubble("annoyed", 1200); return; }
 
     const now = Date.now();
     const cfg = PERSONALITIES[personality];
@@ -798,18 +736,14 @@ export function CatCompanion() {
     const order: Personality[] = ["sevecen", "yaramaz", "meraklı", "tembel"];
     const next = order[(order.indexOf(personality) + 1) % order.length];
     setPersonality(next);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ name, pers: next }));
-    } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name, pers: next })); } catch { /* ignore */ }
     showBubble(`Artık ${PERSONALITIES[next].label} ${PERSONALITIES[next].emoji}`, 2200);
   }, [personality, name, showBubble]);
 
   const renameCat = useCallback(() => {
     const newName = pickName();
     setName(newName);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: newName, pers: personality }));
-    } catch { /* ignore */ }
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ name: newName, pers: personality })); } catch { /* ignore */ }
     showBubble(`Bana ${newName} de`, 2200);
   }, [personality, showBubble]);
 
@@ -818,17 +752,10 @@ export function CatCompanion() {
   if (state === "gone") {
     return (
       <CatControls
-        name={name}
-        personality={personality}
-        foodAmount={foodAmount}
-        onFeed={fillFoodBowl}
-        laserActive={laserActive}
-        onToggleLaser={toggleLaser}
-        hunger={hunger}
-        affection={affection}
-        onCyclePers={cyclePersonality}
-        onRename={renameCat}
-        catGone
+        name={name} personality={personality} foodAmount={foodAmount}
+        onFeed={fillFoodBowl} laserActive={laserActive} onToggleLaser={toggleLaser}
+        hunger={hunger} affection={affection} onCyclePers={cyclePersonality}
+        onRename={renameCat} catGone
       />
     );
   }
@@ -838,7 +765,7 @@ export function CatCompanion() {
   return (
     <>
       <div
-        className={`cat-companion state-${state} pers-${personality}`}
+        className={`cat-companion state-${state} pers-${personality}${airborne ? " airborne" : ""}${squash ? " squash" : ""}`}
         style={{
           left: pos.x,
           top: pos.y,
@@ -884,24 +811,13 @@ export function CatCompanion() {
       ))}
 
       <CatControls
-        name={name}
-        personality={personality}
-        foodAmount={foodAmount}
-        onFeed={fillFoodBowl}
-        laserActive={laserActive}
-        onToggleLaser={toggleLaser}
-        hunger={hunger}
-        affection={affection}
-        onCyclePers={cyclePersonality}
+        name={name} personality={personality} foodAmount={foodAmount}
+        onFeed={fillFoodBowl} laserActive={laserActive} onToggleLaser={toggleLaser}
+        hunger={hunger} affection={affection} onCyclePers={cyclePersonality}
         onRename={renameCat}
       />
     </>
   );
-}
-
-function distance(a: Pos, b: Pos) {
-  const dx = a.x - b.x, dy = a.y - b.y;
-  return Math.sqrt(dx * dx + dy * dy);
 }
 
 interface ControlsProps {
@@ -937,9 +853,7 @@ function CatControls({
       {open && (
         <div className="cat-controls-panel">
           <div className="cat-name-row">
-            <strong onClick={onRename} title="Tıkla, ismini değiştir">
-              {name}
-            </strong>
+            <strong onClick={onRename} title="Tıkla, ismini değiştir">{name}</strong>
             <button className="cat-pers-btn" onClick={onCyclePers} title="Karakterini değiştir">
               {cfg.emoji} {cfg.label}
             </button>
@@ -966,7 +880,7 @@ function CatControls({
           </div>
           {catGone && <p className="cat-status-msg">{name} gücendi… birazdan döner.</p>}
           <p className="cat-tip">
-            <Heart size={11} /> Sırtına tıklayarak sevebilirsin. Çok sevince sıkılır.
+            <Heart size={11} /> Sekmelerin üstünde gezer. Sırtına tıklayarak sevebilirsin.
           </p>
         </div>
       )}

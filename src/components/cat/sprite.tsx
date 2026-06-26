@@ -45,6 +45,31 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
 
   return (
     <svg viewBox="0 0 100 60" className={cls} aria-hidden>
+      <defs>
+        {/* Kürk gölgelendirme — sırt koyu, karın açık (hacim hissi) */}
+        <linearGradient id="catBody" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#e89a5c" />
+          <stop offset="55%" stopColor="#d97a3c" />
+          <stop offset="100%" stopColor="#b8612b" />
+        </linearGradient>
+        <linearGradient id="catHead" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#eaa063" />
+          <stop offset="100%" stopColor="#cf6f33" />
+        </linearGradient>
+        <linearGradient id="catEarInner" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#ffd0b0" />
+          <stop offset="100%" stopColor="#f5a878" />
+        </linearGradient>
+        {/* Gerçekçi yeşil iris + koyu pupil */}
+        <radialGradient id="catIris" cx="50%" cy="50%" r="55%">
+          <stop offset="0%" stopColor="#0c0f09" />
+          <stop offset="34%" stopColor="#0c0f09" />
+          <stop offset="46%" stopColor="#86c94a" />
+          <stop offset="78%" stopColor="#4f8f2e" />
+          <stop offset="100%" stopColor="#2f5a1c" />
+        </radialGradient>
+      </defs>
+
       {/* Ground shadow */}
       <ellipse className="cat-shadow" cx="50" cy="56" rx="32" ry="3" />
 
@@ -64,11 +89,15 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
       <ellipse className="cat-body"  cx="50" cy="33" rx="28" ry="11" />
       <ellipse className="cat-belly" cx="52" cy="38" rx="22" ry="5.5" />
       <g className="cat-stripes">
+        <path d="M 34 24 Q 35 27 34 30" />
         <path d="M 38 23 Q 39 27 38 31" />
         <path d="M 46 22 Q 47 26 46 30" />
         <path d="M 54 22 Q 55 26 54 30" />
         <path d="M 62 23 Q 63 27 62 31" />
+        <path d="M 68 24 Q 69 27 68 30" />
       </g>
+      {/* Sırt boyunca koyu dorsal bant — hacim */}
+      <path className="cat-dorsal" d="M 26 28 Q 50 20 76 26" fill="none" />
 
       {/* FRONT LEGS - the near front leg can lift for paw-lick */}
       <g className="cat-legs cat-front-legs">
@@ -93,8 +122,8 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
 
         {/* Eye */}
         <g className="cat-eye-grp">
-          <ellipse className={`cat-eye ${blinking ? "blink" : ""}`} cx="87" cy="20" rx="1.5" ry="2.2" />
-          <circle className="cat-eye-shine" cx="86.6" cy="19.5" r="0.5" />
+          <ellipse className={`cat-eye ${blinking ? "blink" : ""}`} cx="87" cy="20" rx="1.95" ry="2.55" />
+          <circle className="cat-eye-shine" cx="86.3" cy="19" r="0.55" />
         </g>
 
         {/* Nose */}

@@ -1802,17 +1802,19 @@ label {
 }
 
 /* === Color palette: ginger tabby === */
-.cat-body, .cat-head, .cat-neck { fill: #d97a3c; }
-.cat-belly { fill: #f5d2a8; opacity: 0.95; }
+.cat-body, .cat-neck { fill: url(#catBody); }
+.cat-head { fill: url(#catHead); }
+.cat-belly { fill: #f7d8b0; opacity: 0.95; }
 .cat-leg { fill: #b8632d; }
+.cat-dorsal { stroke: #9a4d18; stroke-width: 3.4; opacity: 0.32; stroke-linecap: round; }
 .cat-stripes path { stroke: #8a4515; stroke-width: 1.4; fill: none; opacity: 0.55; stroke-linecap: round; }
 .cat-tail, .cat-tail-tip { stroke: #d97a3c; }
 .cat-tail-tip { stroke: #5b2d12; }
-.cat-ear { fill: #d97a3c; }
-.cat-ear-inner { fill: #f5b87f; }
-.cat-cheek { fill: #f5d2a8; }
-.cat-eye { fill: #1a1a1a; }
-.cat-eye-shine { fill: #fff; }
+.cat-ear { fill: url(#catBody); }
+.cat-ear-inner { fill: url(#catEarInner); }
+.cat-cheek { fill: #f7d8b0; }
+.cat-eye { fill: url(#catIris); }
+.cat-eye-shine { fill: #fff; opacity: 0.95; }
 .cat-nose { fill: #f06070; }
 .cat-mouth { stroke: #5b2d12; }
 .cat-whiskers line { stroke: #f5e8d5; }
@@ -3094,4 +3096,41 @@ button { -webkit-tap-highlight-color: transparent; }
   .roll-card,
   .panel { animation: none !important; }
   .tab-indicator { transition: opacity 0.2s ease !important; }
+}
+
+/* =====================================================
+   KEDİ FİZİĞİ — zıplama esnemesi, iniş squash, gölge
+   ===================================================== */
+.cat-companion { z-index: 26; }
+
+/* Havadayken hafif uzama (anticipation) */
+.cat-companion.airborne .cat-svg {
+  transform: scaleY(1.07) scaleX(0.95);
+  transition: transform 0.12s ease-out;
+}
+.cat-companion.airborne .cat-shadow {
+  opacity: 0.12;
+  transform: scaleX(0.62) translateY(2px);
+}
+
+/* İnişte squash (yere çarpma) */
+.cat-companion.squash .cat-svg {
+  animation: cat-land 0.22s ease-out;
+}
+@keyframes cat-land {
+  0%   { transform: scaleY(0.82) scaleX(1.12); }
+  60%  { transform: scaleY(1.04) scaleX(0.98); }
+  100% { transform: scaleY(1) scaleX(1); }
+}
+
+/* Pupil dilation artık iris üzerinde daha belirgin */
+.pupil-dilate .cat-eye {
+  transform: scale(1.32);
+  transform-origin: 87px 20px;
+  transition: transform 0.18s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cat-companion.airborne .cat-svg,
+  .cat-companion.squash .cat-svg { animation: none !important; transition: none !important; }
 }
