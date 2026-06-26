@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Wind, Droplets } from "lucide-react";
+import { WeatherSVG } from "@/components/icons";
 
 interface WeatherData {
   temp: number;
@@ -12,18 +13,17 @@ interface WeatherData {
 
 interface WeatherInfo {
   label: string;
-  emoji: string;
   mood: "sunny" | "cloudy" | "foggy" | "rainy" | "snowy" | "stormy";
 }
 
 function getWeatherInfo(code: number): WeatherInfo {
-  if (code === 0) return { label: "Açık", emoji: "☀️", mood: "sunny" };
-  if (code <= 3) return { label: "Parçalı Bulutlu", emoji: "⛅", mood: "cloudy" };
-  if (code <= 48) return { label: "Sisli", emoji: "🌫️", mood: "foggy" };
-  if (code <= 67) return { label: "Yağmurlu", emoji: "🌧️", mood: "rainy" };
-  if (code <= 77) return { label: "Karlı", emoji: "🌨️", mood: "snowy" };
-  if (code <= 82) return { label: "Sağanak", emoji: "🌦️", mood: "rainy" };
-  return { label: "Fırtınalı", emoji: "⛈️", mood: "stormy" };
+  if (code === 0) return { label: "Açık", mood: "sunny" };
+  if (code <= 3) return { label: "Parçalı Bulutlu", mood: "cloudy" };
+  if (code <= 48) return { label: "Sisli", mood: "foggy" };
+  if (code <= 67) return { label: "Yağmurlu", mood: "rainy" };
+  if (code <= 77) return { label: "Karlı", mood: "snowy" };
+  if (code <= 82) return { label: "Sağanak", mood: "rainy" };
+  return { label: "Fırtınalı", mood: "stormy" };
 }
 
 export function WeatherWidget() {
@@ -61,7 +61,9 @@ export function WeatherWidget() {
       {info && weather ? (
         <>
           <div className="weather-main">
-            <span className="weather-emoji">{info.emoji}</span>
+            <span className="weather-icon">
+              <WeatherSVG mood={info.mood} size={30} />
+            </span>
             <span className="weather-temp">{weather.temp}°C</span>
           </div>
           <div className="weather-meta">

@@ -2,7 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { discoverySites, sourceText } from "@/data/discoverySites";
-import { ThumbsDown, ThumbsUp } from "lucide-react";
+import { ThumbsDown, ThumbsUp, ArrowUpRight } from "lucide-react";
+import { VIBE_ICONS } from "@/components/icons";
+
+const VIBE_LABELS: Record<string, string> = {
+  rahatlatici: "Rahatlatıcı",
+  sasirtici: "Şaşırtıcı",
+  oyunlu: "Oyunlu",
+  kesif: "Keşif",
+};
 import {
   getFirebaseServices,
   googleProvider,
@@ -306,17 +314,29 @@ export function SiteRoller() {
       {error ? <p className="note-warn">{error}</p> : null}
 
       <div className="roll-grid">
-        {filteredSites.map((site) => {
+        {filteredSites.map((site, index) => {
           const vote = voteSummaryBySite.get(site.id) ?? {
             likes: 0,
             dislikes: 0,
             score: 0,
             myVote: 0,
           };
+          const VibeIcon = VIBE_ICONS[site.vibe] ?? VIBE_ICONS.kesif;
 
           return (
-            <article className="roll-card" key={site.id}>
-              <span className="source">{sourceText[site.source]}</span>
+            <article
+              className="roll-card"
+              key={site.id}
+              data-vibe={site.vibe}
+              style={{ "--i": Math.min(index, 16) } as React.CSSProperties}
+            >
+              <div className="roll-card-top">
+                <span className="roll-vibe">
+                  <VibeIcon size={13} strokeWidth={1.9} />
+                  {VIBE_LABELS[site.vibe] ?? "Keşif"}
+                </span>
+                <span className="source">{sourceText[site.source]}</span>
+              </div>
               <a
                 href={site.url}
                 target="_blank"
@@ -324,6 +344,7 @@ export function SiteRoller() {
                 className="roll-title-link"
               >
                 <strong>{site.name}</strong>
+                <ArrowUpRight size={15} strokeWidth={2} className="roll-arrow" />
               </a>
               <p className="meta-line">{site.description}</p>
               <div className="vote-bar vote-bar-card">
