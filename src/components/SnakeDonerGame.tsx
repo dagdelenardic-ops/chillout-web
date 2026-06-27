@@ -16,21 +16,6 @@ type GamePhase = "ready" | "running" | "game_over";
 type ToneKey = "eat" | "boost" | "danger" | "dead" | "fortune" | "start";
 
 type Food = Point & { type: FoodType };
-type SpriteKey =
-  | "groundA"
-  | "groundB"
-  | "lane"
-  | "snakeHead"
-  | "snakeBodyA"
-  | "snakeBodyB"
-  | "snakeTail"
-  | "nazar";
-
-type AtlasRect = { x: number; y: number; w: number; h: number };
-type SpriteAtlas = {
-  canvas: HTMLCanvasElement;
-  map: Record<SpriteKey, AtlasRect>;
-};
 
 type GameState = {
   phase: GamePhase;
@@ -68,6 +53,9 @@ const GRID_ROWS = 12;
 const CELL_SIZE = 18;
 const BOARD_WIDTH = GRID_COLS * CELL_SIZE;
 const BOARD_HEIGHT = GRID_ROWS * CELL_SIZE;
+// Supersample the canvas so the smooth (non-pixelated) snake stays crisp
+// when the board is upscaled to fill its column.
+const RENDER_SCALE = 2;
 const BEST_SCORE_KEY = "snake_doner_best_score_v1";
 
 const FOOD_META: Record<
@@ -160,17 +148,6 @@ const DIRECTIONS: Record<"up" | "down" | "left" | "right", Direction> = {
   right: { x: 1, y: 0 },
 };
 
-const SPRITE_KEYS: SpriteKey[] = [
-  "groundA",
-  "groundB",
-  "lane",
-  "snakeHead",
-  "snakeBodyA",
-  "snakeBodyB",
-  "snakeTail",
-  "nazar",
-];
-
 function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
@@ -252,160 +229,279 @@ function normalizeWrapDelta(delta: number): number {
   return delta;
 }
 
-function buildSpriteAtlas(cellSize: number): SpriteAtlas | null {
-  if (typeof document === "undefined") {
-    return null;
+function lerp(a: number, b: number, t: number): number {
+  return a + (b - a) * t;
+}
+
+// Body half-width at a normalized position along the snake (0 = head, 1 = tail).
+function bodyRadius(t: number): number {
+  const neck = CELL_SIZE * 0.44;
+  const tail = CELL_SIZE * 0.12;
+  if (t < 0.12) {
+    return lerp(CELL_SIZE * 0.4, neck, t / 0.12);
+  }
+  return lerp(neck, tail, (t - 0.12) / 0.88);
+}
+
+function drawBackground(ctx: CanvasRenderingContext2D) {
+  const ground = ctx.createLinearGradient(0, 0, 0, BOARD_HEIGHT);
+  ground.addColorStop(0, "#13262f");
+  ground.addColorStop(1, "#0b1820");
+  ctx.fillStyle = ground;
+  ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+
+  ctx.strokeStyle = "rgba(109, 240, 194, 0.05)";
+  ctx.lineWidth = 1;
+  for (let x = 0; x <= GRID_COLS; x += 1) {
+    ctx.beginPath();
+    ctx.moveTo(x * CELL_SIZE, 0);
+    ctx.lineTo(x * CELL_SIZE, BOARD_HEIGHT);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= GRID_ROWS; y += 1) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * CELL_SIZE);
+    ctx.lineTo(BOARD_WIDTH, y * CELL_SIZE);
+    ctx.stroke();
   }
 
-  const columns = 4;
-  const rows = Math.ceil(SPRITE_KEYS.length / columns);
-  const canvas = document.createElement("canvas");
-  canvas.width = columns * cellSize;
-  canvas.height = rows * cellSize;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) {
-    return null;
+  const vignette = ctx.createRadialGradient(
+    BOARD_WIDTH / 2,
+    BOARD_HEIGHT / 2,
+    BOARD_HEIGHT * 0.3,
+    BOARD_WIDTH / 2,
+    BOARD_HEIGHT / 2,
+    BOARD_HEIGHT * 0.78
+  );
+  vignette.addColorStop(0, "rgba(0, 0, 0, 0)");
+  vignette.addColorStop(1, "rgba(0, 0, 0, 0.34)");
+  ctx.fillStyle = vignette;
+  ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
+}
+
+// Nazar boncuğu: concentric evil-eye rings.
+function drawNazar(ctx: CanvasRenderingContext2D, cellX: number, cellY: number) {
+  const cx = cellX * CELL_SIZE + CELL_SIZE / 2;
+  const cy = cellY * CELL_SIZE + CELL_SIZE / 2;
+  const R = CELL_SIZE * 0.42;
+  const rings: Array<[number, string]> = [
+    [R, "#0b3d91"],
+    [R * 0.72, "#f2f6ff"],
+    [R * 0.48, "#1f8fd6"],
+    [R * 0.24, "#06121f"],
+  ];
+  ctx.save();
+  ctx.shadowColor = "rgba(31, 143, 214, 0.55)";
+  ctx.shadowBlur = 8;
+  rings.forEach(([r, color], idx) => {
+    if (idx === 1) {
+      ctx.shadowBlur = 0;
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  });
+  ctx.fillStyle = "rgba(255, 255, 255, 0.85)";
+  ctx.beginPath();
+  ctx.arc(cx - R * 0.18, cy - R * 0.18, R * 0.12, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+// Realistic smooth snake: a tapered, top-lit tube with scaled back markings,
+// a forked flicking tongue and slit-pupil eyes. Drawn from the interpolated
+// render positions (grid units, possibly fractional). Wrap jumps split the
+// body so no line streaks across the board.
+function drawSnake(
+  ctx: CanvasRenderingContext2D,
+  points: Point[],
+  headDir: Direction,
+  nowMs: number,
+  running: boolean
+) {
+  const n = points.length;
+  if (n === 0) {
+    return;
   }
 
-  ctx.imageSmoothingEnabled = false;
-  const map = {} as Record<SpriteKey, AtlasRect>;
+  const px = points.map((p) => ({
+    x: p.x * CELL_SIZE + CELL_SIZE / 2,
+    y: p.y * CELL_SIZE + CELL_SIZE / 2,
+  }));
 
-  const drawTile = (sprite: SpriteKey, sx: number, sy: number) => {
-    const p = (x: number, y: number, w: number, h: number, color: string) => {
-      ctx.fillStyle = color;
-      ctx.fillRect(sx + x, sy + y, w, h);
-    };
-    const c = cellSize;
+  const chains: number[][] = [];
+  let chain: number[] = [0];
+  for (let i = 1; i < n; i += 1) {
+    const a = px[i - 1];
+    const b = px[i];
+    if (Math.hypot(a.x - b.x, a.y - b.y) <= CELL_SIZE * 1.5) {
+      chain.push(i);
+    } else {
+      chains.push(chain);
+      chain = [i];
+    }
+  }
+  chains.push(chain);
 
-    if (sprite === "groundA") {
-      p(0, 0, c, c, "#122734");
-      p(0, 0, c, 2, "rgba(109,240,194,0.06)");
-      p(0, c - 1, c, 1, "rgba(6,15,19,0.45)");
+  const radiusForIndex = (i: number) => bodyRadius(n <= 1 ? 0 : i / (n - 1));
+
+  type Stamp = { x: number; y: number; r: number };
+  const stamps: Stamp[] = [];
+  chains.forEach((c) => {
+    if (c.length === 1) {
+      const i = c[0];
+      stamps.push({ x: px[i].x, y: px[i].y, r: radiusForIndex(i) });
       return;
     }
-
-    if (sprite === "groundB") {
-      p(0, 0, c, c, "#183547");
-      p(1, 1, c - 2, 1, "rgba(255,211,115,0.06)");
-      p(0, c - 1, c, 1, "rgba(6,15,19,0.45)");
-      return;
+    for (let k = 0; k < c.length - 1; k += 1) {
+      const iA = c[k];
+      const iB = c[k + 1];
+      const a = px[iA];
+      const b = px[iB];
+      const steps = 4;
+      for (let s = 0; s < steps; s += 1) {
+        const tt = s / steps;
+        stamps.push({
+          x: lerp(a.x, b.x, tt),
+          y: lerp(a.y, b.y, tt),
+          r: lerp(radiusForIndex(iA), radiusForIndex(iB), tt),
+        });
+      }
     }
-
-    if (sprite === "lane") {
-      p(0, 0, c, c, "rgba(0,0,0,0)");
-      p(0, 2, c, 1, "rgba(255,211,115,0.1)");
-      p(0, c - 3, c, 1, "rgba(109,240,194,0.08)");
-      return;
-    }
-
-    if (sprite === "snakeHead") {
-      p(1, c - 2, c - 4, 2, "rgba(5,10,13,0.25)");
-      p(1, 1, c - 2, c - 2, "#114b62");
-      p(2, 2, c - 4, c - 4, "#1c8da2");
-      p(4, 3, c - 8, c - 6, "#35c1c1");
-      p(4, 3, c - 10, 2, "#e9fff6");
-      p(5, 5, c - 12, 1, "#ffd373");
-      p(c - 6, 6, 3, 3, "#ffeebf");
-      p(c - 5, 7, 1, 1, "#052f3f");
-      p(c - 2, 6, 2, 5, "#dadada");
-      return;
-    }
-
-    if (sprite === "snakeBodyA") {
-      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
-      p(1, 1, c - 2, c - 2, "#114b62");
-      p(2, 2, c - 4, c - 4, "#35c1c1");
-      p(3, 2, c - 6, 2, "#e9fff6");
-      p(4, 4, c - 10, 1, "#ffd373");
-      p(6, 2, 2, c - 4, "#177385");
-      p(10, 2, 2, c - 4, "#177385");
-      return;
-    }
-
-    if (sprite === "snakeBodyB") {
-      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
-      p(1, 1, c - 2, c - 2, "#114b62");
-      p(2, 2, c - 4, c - 4, "#27a9bd");
-      p(3, 2, c - 6, 2, "#d4fff2");
-      p(4, 4, c - 10, 1, "#ffd373");
-      p(6, 2, 2, c - 4, "#13687a");
-      p(10, 2, 2, c - 4, "#13687a");
-      return;
-    }
-
-    if (sprite === "snakeTail") {
-      p(2, c - 2, c - 4, 2, "rgba(5,10,13,0.2)");
-      p(1, 1, c - 2, c - 2, "#114b62");
-      p(2, 2, c - 4, c - 4, "#2fb3c3");
-      p(3, 2, c - 6, 2, "#d7fff3");
-      p(c - 6, c - 2, 5, 2, "#ffdba0");
-      p(c - 5, c, 2, 2, "#ffdba0");
-      p(c - 3, c + 1, 1, 2, "#ffdba0");
-      return;
-    }
-
-    p(1, 1, c - 2, c - 2, "#0b2a63");
-    p(3, 3, c - 6, c - 6, "#123f91");
-    p(6, 6, c - 12, c - 12, "#e4f2ff");
-    p(8, 8, c - 16, c - 16, "#1e58c2");
-  };
-
-  SPRITE_KEYS.forEach((sprite, index) => {
-    const sx = (index % columns) * cellSize;
-    const sy = Math.floor(index / columns) * cellSize;
-    map[sprite] = { x: sx, y: sy, w: cellSize, h: cellSize };
-    drawTile(sprite, sx, sy);
+    const last = c[c.length - 1];
+    stamps.push({ x: px[last].x, y: px[last].y, r: radiusForIndex(last) });
   });
 
-  return { canvas, map };
-}
-
-function drawSprite(
-  ctx: CanvasRenderingContext2D,
-  atlas: SpriteAtlas,
-  sprite: SpriteKey,
-  cellX: number,
-  cellY: number
-) {
-  const rect = atlas.map[sprite];
-  ctx.drawImage(
-    atlas.canvas,
-    rect.x,
-    rect.y,
-    rect.w,
-    rect.h,
-    cellX * CELL_SIZE,
-    cellY * CELL_SIZE,
-    CELL_SIZE,
-    CELL_SIZE
-  );
-}
-
-function drawRotatedSprite(
-  ctx: CanvasRenderingContext2D,
-  atlas: SpriteAtlas,
-  sprite: SpriteKey,
-  cellX: number,
-  cellY: number,
-  angle: number
-) {
-  const rect = atlas.map[sprite];
-  const centerX = cellX * CELL_SIZE + CELL_SIZE / 2;
-  const centerY = cellY * CELL_SIZE + CELL_SIZE / 2;
+  // Soft contact shadow.
   ctx.save();
-  ctx.translate(centerX, centerY);
+  ctx.fillStyle = "rgba(3, 8, 11, 0.28)";
+  stamps.forEach((s) => {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y + 2.4, s.r + 0.6, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.restore();
+
+  // Body base (vertical gradient: lit on top, darker below).
+  const bodyGrad = ctx.createLinearGradient(0, 0, 0, BOARD_HEIGHT);
+  bodyGrad.addColorStop(0, "#2fa457");
+  bodyGrad.addColorStop(1, "#15703a");
+  ctx.fillStyle = bodyGrad;
+  stamps.forEach((s) => {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Top-lit core highlight to round the tube.
+  ctx.fillStyle = "rgba(150, 230, 170, 0.45)";
+  stamps.forEach((s) => {
+    if (s.r < 2) {
+      return;
+    }
+    ctx.beginPath();
+    ctx.arc(s.x, s.y - s.r * 0.32, s.r * 0.5, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Back markings (dark ovals every couple of segments).
+  ctx.fillStyle = "rgba(15, 79, 41, 0.82)";
+  for (let i = 1; i < n - 1; i += 2) {
+    const r = radiusForIndex(i);
+    if (r < 3) {
+      continue;
+    }
+    ctx.beginPath();
+    ctx.ellipse(px[i].x, px[i].y, r * 0.42, r * 0.62, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Bright dorsal hairline along each contiguous chain.
+  ctx.strokeStyle = "rgba(214, 255, 198, 0.5)";
+  ctx.lineWidth = 1.4;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+  chains.forEach((c) => {
+    if (c.length < 2) {
+      return;
+    }
+    ctx.beginPath();
+    c.forEach((i, idx) => {
+      if (idx === 0) {
+        ctx.moveTo(px[i].x, px[i].y);
+      } else {
+        ctx.lineTo(px[i].x, px[i].y);
+      }
+    });
+    ctx.stroke();
+  });
+
+  // Head.
+  const head = px[0];
+  const angle = directionToAngle(headDir);
+  const hr = bodyRadius(0) * 1.18;
+  ctx.save();
+  ctx.translate(head.x, head.y);
   ctx.rotate(angle);
-  ctx.drawImage(
-    atlas.canvas,
-    rect.x,
-    rect.y,
-    rect.w,
-    rect.h,
-    -CELL_SIZE / 2,
-    -CELL_SIZE / 2,
-    CELL_SIZE,
-    CELL_SIZE
-  );
+
+  if (running) {
+    const flick = Math.sin(nowMs / 90);
+    if (flick > 0) {
+      const len = hr * (1.05 + flick * 0.5);
+      ctx.strokeStyle = "#e8413f";
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(hr * 0.7, 0);
+      ctx.lineTo(hr * 0.7 + len * 0.7, 0);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(hr * 0.7 + len * 0.7, 0);
+      ctx.lineTo(hr * 0.7 + len, -hr * 0.28);
+      ctx.moveTo(hr * 0.7 + len * 0.7, 0);
+      ctx.lineTo(hr * 0.7 + len, hr * 0.28);
+      ctx.stroke();
+    }
+  }
+
+  const headGrad = ctx.createLinearGradient(0, -hr, 0, hr);
+  headGrad.addColorStop(0, "#54c777");
+  headGrad.addColorStop(1, "#1c7d42");
+  ctx.fillStyle = headGrad;
+  ctx.beginPath();
+  ctx.ellipse(hr * 0.1, 0, hr * 1.15, hr * 0.95, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(160, 235, 180, 0.4)";
+  ctx.beginPath();
+  ctx.ellipse(hr * 0.05, -hr * 0.32, hr * 0.7, hr * 0.38, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(8, 40, 22, 0.8)";
+  [-1, 1].forEach((sgn) => {
+    ctx.beginPath();
+    ctx.arc(hr * 1.0, sgn * hr * 0.22, hr * 0.07, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  [-1, 1].forEach((sgn) => {
+    const ex = hr * 0.18;
+    const ey = sgn * hr * 0.5;
+    ctx.fillStyle = "#ffd23f";
+    ctx.beginPath();
+    ctx.arc(ex, ey, hr * 0.3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "#08130b";
+    ctx.beginPath();
+    ctx.ellipse(ex, ey, hr * 0.08, hr * 0.22, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255, 255, 255, 0.9)";
+    ctx.beginPath();
+    ctx.arc(ex - hr * 0.08, ey - hr * 0.1, hr * 0.06, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
   ctx.restore();
 }
 
@@ -468,7 +564,6 @@ export function SnakeDonerGame() {
   const swipeStartRef = useRef<Point | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
 
-  const atlas = useMemo(() => buildSpriteAtlas(CELL_SIZE), []);
   const [game, setGame] = useState<GameState>(() =>
     createInitialGame(Date.now(), readBestScoreFromStorage())
   );
@@ -505,7 +600,7 @@ export function SnakeDonerGame() {
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (!canvas || !atlas) {
+    if (!canvas) {
       return;
     }
     const ctx = canvas.getContext("2d");
@@ -513,21 +608,14 @@ export function SnakeDonerGame() {
       return;
     }
 
-    ctx.imageSmoothingEnabled = false;
+    ctx.setTransform(RENDER_SCALE, 0, 0, RENDER_SCALE, 0, 0);
+    ctx.imageSmoothingEnabled = true;
     ctx.clearRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
 
-    for (let y = 0; y < GRID_ROWS; y += 1) {
-      for (let x = 0; x < GRID_COLS; x += 1) {
-        const even = (x + y) % 2 === 0;
-        drawSprite(ctx, atlas, even ? "groundA" : "groundB", x, y);
-        if (y % 4 === 1) {
-          drawSprite(ctx, atlas, "lane", x, y);
-        }
-      }
-    }
+    drawBackground(ctx);
 
     if (game.nazar) {
-      drawSprite(ctx, atlas, "nazar", game.nazar.x, game.nazar.y);
+      drawNazar(ctx, game.nazar.x, game.nazar.y);
     }
 
     const foodEmoji: Record<FoodType, string> = {
@@ -556,8 +644,8 @@ export function SnakeDonerGame() {
       return { x: from.x + dx * t, y: from.y + dy * t };
     });
 
-    // Foods as emoji: we draw a subtle pill behind it so it doesn't look "washed out"
-    // on the upscaled/pixelated canvas.
+    // Food as emoji with a subtle pill behind it so it reads clearly on the
+    // darkened board.
     const fx = game.food.x * CELL_SIZE + CELL_SIZE / 2;
     const fy = game.food.y * CELL_SIZE + CELL_SIZE / 2;
     ctx.save();
@@ -577,45 +665,19 @@ export function SnakeDonerGame() {
     ctx.fillText(foodEmoji[game.food.type], fx, fy + 0.5);
     ctx.restore();
 
-    renderSnake.forEach((segment, index) => {
-      if (index === 0) {
-        drawRotatedSprite(
-          ctx,
-          atlas,
-          "snakeHead",
-          segment.x,
-          segment.y,
-          directionToAngle(game.direction)
-        );
-        return;
-      }
-
-      if (index === renderSnake.length - 1) {
-        const baseTail = game.snake[index];
-        const beforeTail = game.snake[index - 1];
-        const tailDirection = {
-          x: normalizeWrapDelta(baseTail.x - beforeTail.x),
-          y: normalizeWrapDelta(baseTail.y - beforeTail.y),
-        };
-        drawRotatedSprite(
-          ctx,
-          atlas,
-          "snakeTail",
-          segment.x,
-          segment.y,
-          directionToAngle(tailDirection)
-        );
-        return;
-      }
-
-      drawSprite(ctx, atlas, index % 2 === 0 ? "snakeBodyA" : "snakeBodyB", segment.x, segment.y);
-    });
+    drawSnake(
+      ctx,
+      renderSnake,
+      game.direction,
+      game.nowMs,
+      game.phase === "running"
+    );
 
     if (game.trafficState === "red") {
       ctx.fillStyle = "rgba(150, 0, 0, 0.16)";
       ctx.fillRect(0, 0, BOARD_WIDTH, BOARD_HEIGHT);
     }
-  }, [atlas, game]);
+  }, [game]);
 
   const playTone = useCallback((tone: ToneKey | null) => {
     if (!tone || typeof window === "undefined") {
@@ -857,7 +919,11 @@ export function SnakeDonerGame() {
             y: (head.y + direction.y + GRID_ROWS) % GRID_ROWS,
           };
 
-          const hitSelf = next.snake.some((part) => samePoint(part, newHead));
+          // The tail vacates its cell this step, so moving into it is legal
+          // (classic snake). Exclude it from the self-collision check.
+          const hitSelf = next.snake
+            .slice(0, next.snake.length - 1)
+            .some((part) => samePoint(part, newHead));
           if (hitSelf) {
             const overLine = randomFrom(DEATH_LINES);
             line = overLine;
@@ -1069,8 +1135,8 @@ export function SnakeDonerGame() {
           >
             <canvas
               ref={canvasRef}
-              width={BOARD_WIDTH}
-              height={BOARD_HEIGHT}
+              width={BOARD_WIDTH * RENDER_SCALE}
+              height={BOARD_HEIGHT * RENDER_SCALE}
               className="snake-canvas"
             />
 

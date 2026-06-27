@@ -65,6 +65,15 @@ function asVoteValue(value: unknown): VoteValue | null {
   return null;
 }
 
+function faviconUrl(url: string): string {
+  try {
+    const { hostname } = new URL(url);
+    return `https://www.google.com/s2/favicons?sz=64&domain=${hostname}`;
+  } catch {
+    return "";
+  }
+}
+
 export function SiteRoller() {
   const [filter, setFilter] = useState<SourceFilter>("all");
   const [services] = useState(() => getFirebaseServices());
@@ -343,6 +352,21 @@ export function SiteRoller() {
                 rel="noreferrer"
                 className="roll-title-link"
               >
+                <span className="roll-favicon" aria-hidden="true">
+                  <span className="roll-favicon-letter">
+                    {site.name.charAt(0)}
+                  </span>
+                  {/* eslint-disable-next-line @next/next/no-img-element -- tiny external favicon; next/image optimization is needless here */}
+                  <img
+                    src={faviconUrl(site.url)}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    onError={(event) => {
+                      event.currentTarget.style.display = "none";
+                    }}
+                  />
+                </span>
                 <strong>{site.name}</strong>
                 <ArrowUpRight size={15} strokeWidth={2} className="roll-arrow" />
               </a>
