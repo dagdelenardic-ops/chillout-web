@@ -1927,9 +1927,14 @@ label {
   user-select: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.45));
   will-change: left, top, transform;
-  transition: filter 0.25s ease;
+  transition: filter 0.25s ease, opacity 0.3s ease;
 }
 .cat-companion:hover { filter: drop-shadow(0 4px 10px rgba(255, 211, 115, 0.5)); }
+/* Tab bar ekrandan kaydığında kediyi/kabı gizle — tepeye yapışıp donmasın */
+.cat-companion.cat-off, .cat-foodbowl.cat-off {
+  opacity: 0;
+  pointer-events: none;
+}
 
 .cat-svg {
   width: 100%;
@@ -2789,7 +2794,7 @@ label {
   pointer-events: auto;
   cursor: pointer;
   transform: translate(-50%, -50%);
-  transition: transform 0.18s var(--ease-spring), filter 0.18s ease;
+  transition: transform 0.18s var(--ease-spring), filter 0.18s ease, opacity 0.3s ease;
 }
 .cat-foodbowl:hover {
   transform: translate(-50%, -50%) scale(1.12);
