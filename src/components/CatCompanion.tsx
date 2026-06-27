@@ -141,6 +141,7 @@ export function CatCompanion() {
   const foodPosRef = useRef<Pos>({ x: 80, y: 120 });
   const lastBowlRef = useRef<Pos | null>(null);
   const vyRef = useRef(0);
+  const vxRef = useRef(0);
   const airborneRef = useRef(false);
   const squashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -622,48 +623,58 @@ export function CatCompanion() {
         ny = cur.y + (gY - cur.y) * SETTLE_LERP; // yumuşak oturma + scroll takibi
       }
 
-      // === yatay ===
+      // === yatay (ivme + sürtünmeyle gerçekçi yürüyüş) ===
       const moveBlocked =
         s === "sleeping" || s === "eating" || s === "being_petted" ||
         s === "idle" || s === "annoyed" || s === "pooping";
 
-      let nx = cur.x;
-      let movingNow = false;
-
+      // Hedef x ve bu duruma özgü maksimum hız
+      let tx: number | null = null;
+      let maxSpeed = 0;
       if (s === "leaving" && targetRef.current) {
-        const dxh = targetRef.current.x - cur.x;
-        nx = cur.x + Math.sign(dxh) * 0.95 * f;
-        movingNow = true;
-        if (Math.abs(dxh) > 1) setDirection(dxh > 0 ? "right" : "left");
+        tx = targetRef.current.x; // ekran dışı, clamp yok
+        maxSpeed = 1.6;
       } else if (!moveBlocked) {
-        let tx: number | null = null;
         if (s === "chasing_laser" && laserRef.current.active) {
           tx = clamp(laserRef.current.x, lo, hi);
+          maxSpeed = 1.45;
+        } else if (s === "zoomies" && targetRef.current) {
+          tx = clamp(targetRef.current.x, lo, hi);
+          maxSpeed = 2.3;
         } else if (targetRef.current) {
           tx = clamp(targetRef.current.x, lo, hi);
-        }
-        if (tx !== null) {
-          const dxh = tx - cur.x;
-          let speed: number;
-          if (s === "chasing_laser") speed = 0.7;
-          else if (s === "zoomies") speed = 1.05;
-          else speed = SLOW_WALK * PERSONALITIES[persRef.current].speedMult;
-          const stepx = speed * f;
-          if (Math.abs(dxh) <= stepx) {
-            nx = tx;
-            if (Math.abs(dxh) < 2 && !airborneRef.current) {
-              if (s === "seeking_food") { setState("eating"); setTarget(null); }
-              else if (s === "wandering") { setState("idle"); setTarget(null); }
-            }
-          } else {
-            nx = cur.x + Math.sign(dxh) * stepx;
-            movingNow = true;
-          }
-          if (Math.abs(dxh) > 1) setDirection(dxh > 0 ? "right" : "left");
+          maxSpeed = SLOW_WALK * 1.85 * PERSONALITIES[persRef.current].speedMult;
         }
       }
 
-      if (Math.abs(nx - cur.x) > 0.05 || Math.abs(ny - cur.y) > 0.05) {
+      let vx = vxRef.current;
+      if (tx !== null) {
+        const dxh = tx - cur.x;
+        // Hedefe yaklaşınca hız düşer -> doğal yavaşlama (ease-out)
+        const approach = clamp(Math.abs(dxh) / 26, 0, 1);
+        const desired = Math.sign(dxh) * maxSpeed * approach;
+        // Hıza yumuşak yaklaş -> kalkışta ease-in
+        vx += (desired - vx) * Math.min(1, 0.16 * f);
+        if (Math.abs(dxh) < 1.6 && Math.abs(vx) < 0.12) {
+          vx = 0;
+          if (!airborneRef.current) {
+            if (s === "seeking_food") { setState("eating"); setTarget(null); }
+            else if (s === "wandering") { setState("idle"); setTarget(null); }
+          }
+        }
+      } else {
+        // Hedef yok: sürtünmeyle yavaşça dur
+        vx *= Math.pow(0.8, f);
+        if (Math.abs(vx) < 0.02) vx = 0;
+      }
+      vxRef.current = vx;
+
+      let nx = cur.x + vx * f;
+      if (s !== "leaving") nx = clamp(nx, lo, hi);
+      const movingNow = Math.abs(vx) > 0.07;
+      if (Math.abs(vx) > 0.05) setDirection(vx > 0 ? "right" : "left");
+
+      if (Math.abs(nx - cur.x) > 0.01 || Math.abs(ny - cur.y) > 0.05) {
         setPos({ x: nx, y: ny });
       }
       setIsMoving(movingNow || airborneRef.current);
@@ -787,11 +798,18 @@ export function CatCompanion() {
         />
       </div>
 
-      <div className="cat-foodbowl" style={{ left: foodPos.x, top: foodPos.y }}>
-        <div className="cat-foodbowl-inner">
+      <button
+        type="button"
+        className={`cat-foodbowl ${foodAmount > 0 ? "has-food" : "empty"}`}
+        style={{ left: foodPos.x, top: foodPos.y }}
+        onClick={fillFoodBowl}
+        title="Mama ver"
+        aria-label="Mama kasesi — tıklayarak mama ekle"
+      >
+        <span className="cat-foodbowl-inner">
           {foodAmount > 0 ? "🍖".repeat(Math.min(3, foodAmount)) : "🥣"}
-        </div>
-      </div>
+        </span>
+      </button>
 
       {laserActive && (
         <div className="cat-laser-dot" style={{ left: laserPos.x, top: laserPos.y }} />

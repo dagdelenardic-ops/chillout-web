@@ -1375,6 +1375,143 @@ label {
   transform-origin: 50% 50%;
 }
 
+/* === Pomodoro: kapsamlı sürüm === */
+.pomodoro-head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: -8px;
+}
+.pomodoro-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+.pomodoro-tag.focus { color: var(--accent-mint); }
+.pomodoro-tag.short { color: var(--accent-sun); }
+.pomodoro-tag.long  { color: #ffa17a; }
+.pomodoro-icon-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  border: 1px solid rgba(182, 227, 216, 0.2);
+  background: rgba(8, 16, 20, 0.5);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.pomodoro-icon-btn:hover,
+.pomodoro-icon-btn.active {
+  color: var(--accent-mint);
+  border-color: color-mix(in srgb, var(--accent-mint) 50%, transparent);
+  background: color-mix(in srgb, var(--accent-mint) 10%, transparent);
+}
+
+.pomodoro-cycle-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-top: 4px;
+}
+.cycle-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(182, 227, 216, 0.2);
+  border: 1px solid rgba(182, 227, 216, 0.3);
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.cycle-dot.filled {
+  background: var(--accent-mint);
+  border-color: var(--accent-mint);
+  transform: scale(1.12);
+}
+
+.pomodoro-today {
+  margin: -8px 0 0;
+  font-size: 0.86rem;
+  color: var(--ink-soft);
+}
+.pomodoro-today strong { color: var(--accent-sun); }
+
+.player-controls .secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.pomodoro-settings {
+  width: 100%;
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(182, 227, 216, 0.16);
+  background: rgba(8, 16, 20, 0.5);
+  animation: card-rise 0.3s var(--ease-smooth);
+}
+.pomodoro-setting-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+.pomodoro-setting-grid label {
+  display: grid;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+}
+.pomodoro-setting-grid input {
+  width: 100%;
+  padding: 7px 9px;
+  border-radius: 8px;
+  border: 1px solid rgba(182, 227, 216, 0.22);
+  background: rgba(5, 10, 14, 0.6);
+  color: var(--ink-strong);
+  font-size: 0.95rem;
+  font-variant-numeric: tabular-nums;
+}
+.pomodoro-setting-grid input:focus-visible {
+  outline: none;
+  border-color: var(--accent-mint);
+}
+.pomodoro-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pomodoro-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(182, 227, 216, 0.22);
+  background: rgba(5, 10, 14, 0.5);
+  color: var(--ink-soft);
+  cursor: pointer;
+  transition: border-color 0.2s ease, color 0.2s ease, background 0.2s ease;
+}
+.pomodoro-toggle:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent-mint) 45%, transparent);
+}
+.pomodoro-toggle.on {
+  color: var(--accent-mint);
+  border-color: color-mix(in srgb, var(--accent-mint) 50%, transparent);
+  background: color-mix(in srgb, var(--accent-mint) 12%, transparent);
+}
+.pomodoro-toggle:disabled { cursor: default; opacity: 0.85; }
+
 /* =====================================================
    HERO — two-column with proper alignment
    ===================================================== */
@@ -1810,6 +1947,8 @@ label {
 .cat-stripes path { stroke: #8a4515; stroke-width: 1.4; fill: none; opacity: 0.55; stroke-linecap: round; }
 .cat-tail, .cat-tail-tip { stroke: #d97a3c; }
 .cat-tail-tip { stroke: #5b2d12; }
+.cat-tail-fluff { stroke: #c46a2e; opacity: 0.55; }
+.cat-tail-rings path { stroke: #8a4515; fill: none; opacity: 0.55; }
 .cat-ear { fill: url(#catBody); }
 .cat-ear-inner { fill: url(#catEarInner); }
 .cat-cheek { fill: #f7d8b0; }
@@ -2640,8 +2779,23 @@ label {
   z-index: 27;
   width: 50px;
   height: 26px;
-  pointer-events: none;
+  padding: 0;
+  border: none;
+  background: none;
+  pointer-events: auto;
+  cursor: pointer;
   transform: translate(-50%, -50%);
+  transition: transform 0.18s var(--ease-spring), filter 0.18s ease;
+}
+.cat-foodbowl:hover {
+  transform: translate(-50%, -50%) scale(1.12);
+  filter: drop-shadow(0 3px 8px rgba(255, 211, 115, 0.45));
+}
+.cat-foodbowl:active {
+  transform: translate(-50%, -50%) scale(0.96);
+}
+.cat-foodbowl.empty .cat-foodbowl-inner {
+  opacity: 0.85;
 }
 
 .cat-foodbowl-inner {
@@ -3059,6 +3213,51 @@ button { -webkit-tap-highlight-color: transparent; }
   line-height: 1;
   text-transform: uppercase;
   color: var(--vibe-color, var(--accent-mint));
+}
+
+/* Hover ile site ekran görüntüsü önizlemesi */
+.roll-preview-float {
+  position: fixed;
+  z-index: 60;
+  width: 320px;
+  height: 204px;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--accent-mint) 30%, rgba(8, 16, 20, 0.9));
+  background: linear-gradient(110deg, rgba(12, 24, 30, 0.96), rgba(8, 16, 20, 0.96));
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+  display: grid;
+  place-items: center;
+  animation: preview-pop 0.18s var(--ease-smooth);
+}
+@keyframes preview-pop {
+  from { opacity: 0; transform: translateY(6px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+.roll-preview-float img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity 0.25s ease;
+}
+.roll-preview-float[data-state="ok"] img { opacity: 1; }
+.roll-preview-float[data-state="fail"] img { display: none; }
+.roll-preview-cap {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--ink-soft);
+  letter-spacing: 0.02em;
+}
+.roll-preview-float[data-state="ok"] .roll-preview-cap { opacity: 0; }
+.roll-preview-float[data-state="loading"] .roll-preview-cap::after { content: " yükleniyor…"; }
+.roll-preview-float[data-state="fail"] .roll-preview-cap::after { content: " yok"; }
+
+@media (hover: none) {
+  .roll-preview-float { display: none; }
 }
 
 /* ---- Genel buton dokunuş geri bildirimi ---- */

@@ -74,6 +74,16 @@ function faviconUrl(url: string): string {
   }
 }
 
+// Sayfa ekran görüntüsü önizlemesi (thum.io, anahtar gerektirmez).
+function previewUrl(url: string): string {
+  return `https://image.thum.io/get/width/440/crop/280/noanimate/${url}`;
+}
+
+const PREVIEW_W = 320;
+const PREVIEW_H = 204;
+
+type PreviewState = { url: string; left: number; top: number };
+
 export function SiteRoller() {
   const [filter, setFilter] = useState<SourceFilter>("all");
   const [services] = useState(() => getFirebaseServices());
@@ -82,6 +92,20 @@ export function SiteRoller() {
   const [error, setError] = useState<string | null>(null);
   const [isVoting, setIsVoting] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+
+  const openPreview = (url: string, target: HTMLElement) => {
+    if (typeof window === "undefined") return;
+    const r = target.getBoundingClientRect();
+    let left = r.right + 12;
+    if (left + PREVIEW_W > window.innerWidth - 8) {
+      left = r.left - PREVIEW_W - 12;
+    }
+    left = Math.max(8, Math.min(left, window.innerWidth - PREVIEW_W - 8));
+    let top = r.top;
+    top = Math.max(8, Math.min(top, window.innerHeight - PREVIEW_H - 8));
+    setPreview({ url, left, top });
+  };
 
   const auth = services?.auth ?? null;
   const db = services?.db ?? null;
@@ -338,6 +362,8 @@ export function SiteRoller() {
               key={site.id}
               data-vibe={site.vibe}
               style={{ "--i": Math.min(index, 16) } as React.CSSProperties}
+              onMouseEnter={(event) => openPreview(site.url, event.currentTarget)}
+              onMouseLeave={() => setPreview(null)}
             >
               <div className="roll-card-top">
                 <span className="roll-vibe">
@@ -401,8 +427,34 @@ export function SiteRoller() {
 
       <p className="footer-note">
         Kaynak: Ekşi Sözlük &quot;az kişinin bildiği muhteşem web siteleri&quot;
-        başlığı ve global internet keşif seçimleri.
+        başlığı ve global internet keşif seçimleri. Bir kartın üstüne gelince site
+        önizlemesi açılır.
       </p>
+
+      {preview ? (
+        <div
+          className="roll-preview-float"
+          data-state="loading"
+          style={{ left: preview.left, top: preview.top }}
+          aria-hidden="true"
+        >
+          <span className="roll-preview-cap">🔎 Önizleme</span>
+          {/* eslint-disable-next-line @next/next/no-img-element -- external screenshot service, next/image is unnecessary */}
+          <img
+            key={preview.url}
+            src={previewUrl(preview.url)}
+            alt=""
+            loading="lazy"
+            decoding="async"
+            onLoad={(event) => {
+              event.currentTarget.parentElement?.setAttribute("data-state", "ok");
+            }}
+            onError={(event) => {
+              event.currentTarget.parentElement?.setAttribute("data-state", "fail");
+            }}
+          />
+        </div>
+      ) : null}
     </article>
   );
 }

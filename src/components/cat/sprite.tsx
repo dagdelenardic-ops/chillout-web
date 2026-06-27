@@ -75,8 +75,15 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
 
       {/* TAIL - separate elements for layered animation */}
       <g className="cat-tail-grp">
+        {/* yumuşak kabarık alt katman — daha gür kuyruk silüeti */}
+        <path className="cat-tail-fluff" d="M 22 32 Q 7 26 5 11" fill="none" strokeWidth={8} strokeLinecap="round" />
         <path className="cat-tail" d="M 22 32 Q 8 26 6 12" fill="none" strokeWidth={4.5} strokeLinecap="round" />
-        <path className="cat-tail-tip" d="M 6 12 L 6 9" fill="none" strokeWidth={4.5} strokeLinecap="round" />
+        <path className="cat-tail-tip" d="M 6 12 L 6 9" fill="none" strokeWidth={5} strokeLinecap="round" />
+        {/* kuyrukta tabby halkaları */}
+        <g className="cat-tail-rings" strokeWidth={1.3} strokeLinecap="round">
+          <path d="M 16 30 q 2 -2 0 -4" />
+          <path d="M 11 24 q 2 -2 0 -4" />
+        </g>
       </g>
 
       {/* BACK LEGS */}
