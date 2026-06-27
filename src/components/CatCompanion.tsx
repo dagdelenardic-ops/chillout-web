@@ -50,7 +50,7 @@ const STORAGE_KEY = "chillout-cat-v2";
 const GRAVITY = 0.55;        // kare başına (16ms) ivme
 const HOP_V = 4.6;           // zıplama başlangıç hızı
 const GROUND_GAP = 14;       // kedi merkezinin bar üstünden yüksekliği
-const MIN_Y = 34;            // ekran tepesinden taşmasın
+const MIN_VISIBLE_Y = 24;    // kedi merkezi bunun üstüne çıkarsa (bar ekrandan kaydı) kediyi gizle
 const X_MARGIN = 12;
 const SLOW_WALK = 0.34;      // çok yavaş yürüyüş (eski 1.5 idi)
 const SETTLE_LERP = 0.4;     // bara yumuşak oturma (yay hissi)
@@ -72,7 +72,12 @@ function readBar(): Bar | null {
   return { left: r.left, right: r.right, top: r.top, activeCx };
 }
 
-function groundY(b: Bar) { return Math.max(MIN_Y, b.top - GROUND_GAP); }
+function groundY(b: Bar) { return b.top - GROUND_GAP; }
+// Bar (dolayısıyla kedi) ekranda kullanılabilir konumda mı?
+function barOnScreen(b: Bar) {
+  if (typeof window === "undefined") return true;
+  return b.top - GROUND_GAP >= MIN_VISIBLE_Y && b.top <= window.innerHeight;
+}
 function xMin(b: Bar) { return b.left + X_MARGIN; }
 function xMax(b: Bar) { return b.right - X_MARGIN; }
 
@@ -121,6 +126,7 @@ export function CatCompanion() {
   const [idleAction, setIdleAction] = useState<IdleAction>(null);
   const [airborne, setAirborne] = useState(false);
   const [squash, setSquash] = useState(false);
+  const [onBar, setOnBar] = useState(true); // tab bar ekranda mı (değilse kediyi gizle)
 
   const [name, setName] = useState<string>("");
   const [personality, setPersonality] = useState<Personality>("sevecen");
@@ -144,6 +150,7 @@ export function CatCompanion() {
   const vxRef = useRef(0);
   const airborneRef = useRef(false);
   const squashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onBarRef = useRef(true);
 
   useEffect(() => { stateRef.current = state; }, [state]);
   useEffect(() => { posRef.current = pos; }, [pos]);
@@ -596,7 +603,16 @@ export function CatCompanion() {
       const s = stateRef.current;
       const cur = posRef.current;
 
-      if (!b) { setIsMoving(false); animationRef.current = requestAnimationFrame(tick); return; }
+      if (!b) {
+        setIsMoving(false);
+        if (onBarRef.current) { onBarRef.current = false; setOnBar(false); }
+        animationRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Bar ekrandan kaydıysa kediyi/kabı gizle (tepeye clamp'lenip donmasın)
+      const visible = barOnScreen(b);
+      if (onBarRef.current !== visible) { onBarRef.current = visible; setOnBar(visible); }
 
       const gY = groundY(b);
       const lo = xMin(b), hi = xMax(b);
@@ -776,7 +792,7 @@ export function CatCompanion() {
   return (
     <>
       <div
-        className={`cat-companion state-${state} pers-${personality}${airborne ? " airborne" : ""}${squash ? " squash" : ""}`}
+        className={`cat-companion state-${state} pers-${personality}${airborne ? " airborne" : ""}${squash ? " squash" : ""}${onBar ? "" : " cat-off"}`}
         style={{
           left: pos.x,
           top: pos.y,
@@ -800,7 +816,7 @@ export function CatCompanion() {
 
       <button
         type="button"
-        className={`cat-foodbowl ${foodAmount > 0 ? "has-food" : "empty"}`}
+        className={`cat-foodbowl ${foodAmount > 0 ? "has-food" : "empty"}${onBar ? "" : " cat-off"}`}
         style={{ left: foodPos.x, top: foodPos.y }}
         onClick={fillFoodBowl}
         title="Mama ver"
