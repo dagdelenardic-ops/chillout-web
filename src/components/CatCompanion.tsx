@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { Cookie, Zap, X, Heart } from "lucide-react";
 import { CatSprite, type Pose, type IdleAction } from "./cat/sprite";
+import { FOCUS_COMPLETE_EVENT } from "@/lib/focusStats";
 import {
   PERSONALITIES,
   pickPersonality,
@@ -238,6 +239,24 @@ export function CatCompanion() {
   const showCtxBubble = useCallback((ctx: BubbleContext, ms?: number) => {
     showBubble(pickBubble(ctx), ms);
   }, [showBubble]);
+
+  // === Pomodoro odak ödülü: kedi kutlar (zıplar, sevinir, küçük ödül) ===
+  useEffect(() => {
+    const onFocusComplete = (e: Event) => {
+      const streak = (e as CustomEvent<{ streak?: number }>).detail?.streak ?? 0;
+      setAffection((a) => Math.min(100, a + 10));
+      setHunger((h) => Math.max(0, h - 8));
+      showBubble(streak > 1 ? `${streak} günlük seri! 🔥` : "Bir pomodoro daha! 🎉", 3000);
+      doHop();
+      const t = window.setTimeout(() => doHop(), 320);
+      setState((s) =>
+        s === "sleeping" || s === "leaving" || s === "gone" ? s : "zoomies"
+      );
+      return () => window.clearTimeout(t);
+    };
+    window.addEventListener(FOCUS_COMPLETE_EVENT, onFocusComplete);
+    return () => window.removeEventListener(FOCUS_COMPLETE_EVENT, onFocusComplete);
+  }, [showBubble, doHop]);
 
   // === Hunger / affection ===
   useEffect(() => {

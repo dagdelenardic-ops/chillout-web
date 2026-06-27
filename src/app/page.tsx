@@ -5,7 +5,9 @@ import { AudioPlayer } from "@/components/AudioPlayer";
 import { BackgroundVideoWall } from "@/components/BackgroundVideoWall";
 import { ChatBox } from "@/components/ChatBox";
 import { PomodoroTimer } from "@/components/PomodoroTimer";
+import { FocusStats } from "@/components/FocusStats";
 import { SnakeDonerGame } from "@/components/SnakeDonerGame";
+import { SceneMixer } from "@/components/SceneMixer";
 import { SiteRoller } from "@/components/SiteRoller";
 import { WeatherWidget } from "@/components/WeatherWidget";
 import { QuoteCard } from "@/components/QuoteCard";
@@ -93,6 +95,7 @@ export default function Home() {
       <AuroraBackground />
       <BackgroundVideoWall />
       <AudioPlayer />
+      <SceneMixer />
       <CatCompanion />
 
       <header className="hero">
@@ -150,6 +153,7 @@ export default function Home() {
           <div className="pomodoro-grid">
             <div className="pomodoro-block">
               <PomodoroTimer />
+              <FocusStats />
             </div>
             <div className="tasks-block">
               <ChatBox mode="tasks" />
