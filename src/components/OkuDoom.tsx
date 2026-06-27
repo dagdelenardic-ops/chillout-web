@@ -3,8 +3,13 @@
 import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { Heart, X as XIcon, ArrowUp, Bookmark, Filter, RotateCcw } from "lucide-react";
 import { okuStories, okuCategories, type OkuStory } from "@/data/okuDoomStories";
+import okuHeroImageIds from "@/data/okuHeroImages.json";
 
 const STORAGE_KEY = "chillout-oku-saved";
+
+// Imagen ile üretilmiş hero görseli olan hikâye id'leri (manifest).
+// Boşsa tüm kartlar mevcut prosedürel arka plana düşer.
+const HERO_IMAGE_SET = new Set(okuHeroImageIds as string[]);
 
 // Tone -> base color (HSL) — same logic as OkuDOOM hero-visual
 function toneBase(hue: number, tone: string) {
@@ -21,6 +26,7 @@ function toneBase(hue: number, tone: string) {
 function StoryHero({ story, blur = 0 }: { story: OkuStory; blur?: number }) {
   const { hue, tone } = story.hero;
   const id = useMemo(() => `grain-${Math.random().toString(36).slice(2, 7)}`, []);
+  const hasPhoto = HERO_IMAGE_SET.has(story.id);
   return (
     <div
       className="oku-hero"
@@ -29,6 +35,19 @@ function StoryHero({ story, blur = 0 }: { story: OkuStory; blur?: number }) {
         filter: blur ? `blur(${blur}px)` : "none",
       }}
     >
+      {hasPhoto && (
+        // eslint-disable-next-line @next/next/no-img-element -- dekoratif full-bleed hero; next/image gereksiz
+        <img
+          className="oku-hero-photo"
+          src={`/images/oku/${story.id}.jpg`}
+          alt=""
+          loading="lazy"
+          decoding="async"
+          onError={(e) => {
+            e.currentTarget.style.display = "none";
+          }}
+        />
+      )}
       <div
         className="oku-hero-tint"
         style={{

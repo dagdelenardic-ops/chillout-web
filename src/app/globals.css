@@ -2565,6 +2565,10 @@ label {
 
 /* Hero layers */
 .oku-hero { position: absolute; inset: 0; overflow: hidden; }
+.oku-hero-photo {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; z-index: 0;
+}
 .oku-hero-tint, .oku-hero-vignette, .oku-hero-darken,
 .oku-hero-scanlines, .oku-hero-grain {
   position: absolute; inset: 0; pointer-events: none;
