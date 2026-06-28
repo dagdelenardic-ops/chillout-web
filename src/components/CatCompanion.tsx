@@ -149,6 +149,9 @@ export function CatCompanion() {
   const lastBowlRef = useRef<Pos | null>(null);
   const vyRef = useRef(0);
   const vxRef = useRef(0);
+  const walkPhaseRef = useRef(0); // sürekli artan yürüyüş fazı (radyan)
+  const gaitRef = useRef(0);      // yürüyüş şiddeti 0..~1.7 (hıza eşlenir)
+  const lookTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null); // "içeriğe bak" reset zamanlayıcısı
   const airborneRef = useRef(false);
   const squashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onBarRef = useRef(true);
@@ -323,6 +326,65 @@ export function CatCompanion() {
     sched();
     return () => clearTimeout(timeout);
   }, [mounted, personality, hunger, showCtxBubble]);
+
+  // === İçeriğe bakıp yorum yapma ===
+  // Kedi ara sıra aktif sekmeye/öne çıkan içeriğe bakar ve bağlama uygun
+  // bir laf eder (Keşfet'te görünen site adını bile yakalar).
+  const commentOnContent = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const pick = (arr: string[]) => arr[Math.floor(Math.random() * arr.length)] ?? "";
+    const tab = document.querySelector(".tab-nav .tab-btn.active")?.textContent?.trim() ?? "";
+    let line: string;
+    if (tab.includes("Keşfet")) {
+      const names = (Array.from(
+        document.querySelectorAll(".roll-card .roll-title-link strong")
+      ) as HTMLElement[])
+        .map((n) => n.textContent?.trim())
+        .filter((v): v is string => Boolean(v));
+      const name = names.length ? pick(names) : "";
+      line = name
+        ? pick([`${name}? İlginçmiş 👀`, `${name}'a bir bakalım mı?`, `Hmm, ${name}...`, `${name} gözüme çarptı 🔍`])
+        : pick(["Bu siteler ilgimi çekti 👀", "Nereye dalıyoruz? 🔍", "Keşfedelim mi?"]);
+    } else if (tab.includes("Oku")) {
+      line = pick(["Güzel hikâyeymiş 📖", "Bunu okudun mu?", "Ne anlatıyor bu? 👀", "Bana da oku 🐾"]);
+    } else if (tab.includes("Pomodoro")) {
+      line = pick(["Odaklan, ben buradayım 🐾", "Bir pomodoro daha? 🍅", "Çalış çalış, sonra oynarız 😼", "Molada beni sev 💤"]);
+    } else if (tab.includes("Yılan")) {
+      line = pick(["Yılanı yakala! 🐍", "Dikkat, duvara çarpma!", "Bu oyun bende olsa... 🐾", "Hızlısın ha 👀"]);
+    } else if (tab.includes("Bulmaca")) {
+      line = pick(["Bu bilmece zor 🤔", "Cevabı buldun mu?", "Düşün düşün... 🐾", "Bence cevabı biliyorum 😼"]);
+    } else {
+      line = pick(["Neler oluyor burada? 👀", "İlginç...", "Hmm 🐾"]);
+    }
+    setIdleAction("looking");
+    setPupilDilate(true);
+    showBubble(line, 3000);
+    if (lookTimeoutRef.current) clearTimeout(lookTimeoutRef.current);
+    lookTimeoutRef.current = setTimeout(() => {
+      setIdleAction((a) => (a === "looking" ? null : a));
+      setPupilDilate(false);
+    }, 2600);
+  }, [showBubble]);
+
+  useEffect(() => {
+    if (!mounted) return;
+    const cfg = PERSONALITIES[personality];
+    let timeout: ReturnType<typeof setTimeout>;
+    const sched = () => {
+      timeout = setTimeout(() => {
+        const s = stateRef.current;
+        if ((s === "idle" || s === "wandering") && Math.random() < 0.4 + cfg.curiosity * 0.45) {
+          commentOnContent();
+        }
+        sched();
+      }, rand(15000, 28000));
+    };
+    sched();
+    return () => {
+      clearTimeout(timeout);
+      if (lookTimeoutRef.current) clearTimeout(lookTimeoutRef.current);
+    };
+  }, [mounted, personality, commentOnContent]);
 
   // === Idle micro-actions ===
   useEffect(() => {
@@ -704,6 +766,14 @@ export function CatCompanion() {
       }
       vxRef.current = vx;
 
+      // === Prosedürel yürüyüş fazı + şiddeti (hıza eşlenir, ayak kaymaz) ===
+      const speed = Math.abs(vx);
+      const STRIDE_PX = 22; // bir tam adım döngüsü kaç px ilerlemeye denk
+      walkPhaseRef.current += (2 * Math.PI * speed * f) / STRIDE_PX;
+      if (walkPhaseRef.current > 1e6) walkPhaseRef.current %= 2 * Math.PI;
+      const gaitTarget = Math.min(1.7, speed / 0.6);
+      gaitRef.current += (gaitTarget - gaitRef.current) * Math.min(1, 0.45 * f);
+
       let nx = cur.x + vx * f;
       if (s !== "leaving") nx = clamp(nx, lo, hi);
       const movingNow = Math.abs(vx) > 0.07;
@@ -830,6 +900,8 @@ export function CatCompanion() {
           earTwitch={earTwitch}
           mouthOpen={mouthOpen}
           pupilDilate={pupilDilate}
+          walkPhase={walkPhaseRef.current}
+          gait={gaitRef.current}
         />
       </div>
 

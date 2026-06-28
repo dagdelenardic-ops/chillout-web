@@ -31,9 +31,22 @@ interface Props {
   earTwitch: boolean;
   mouthOpen: boolean;
   pupilDilate: boolean;
+  /** Sürekli artan yürüyüş fazı (radyan) — hıza göre CatCompanion sürer */
+  walkPhase?: number;
+  /** Yürüyüş şiddeti 0..~1.7 (hıza bağlı); 0 = duruyor (bacaklar dinlenir) */
+  gait?: number;
 }
 
-export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilDilate }: Props) {
+export function CatSprite({
+  pose,
+  action,
+  blinking,
+  earTwitch,
+  mouthOpen,
+  pupilDilate,
+  walkPhase = 0,
+  gait = 0,
+}: Props) {
   const cls = [
     "cat-svg",
     `pose-${pose}`,
@@ -42,6 +55,39 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
     mouthOpen ? "mouth-open" : "",
     pupilDilate ? "pupil-dilate" : "",
   ].filter(Boolean).join(" ");
+
+  // === Prosedürel yürüyüş: hıza eşlenen 4-bacak gait + gövde bob'u ===
+  // Bacaklar SVG transform attribute'üyle sürülür (CSS yürüyüş animasyonları
+  // kaldırıldı, böylece çakışma yok). Sadece walking/running pose'da etkin.
+  // Düşük eşik: çok yavaş yürürken de bacaklar canlanır. Genlik gait'e (hıza)
+  // orantılı olduğundan eşiğe yakın değerlerde salınım ~0'dır → dinlenmeye
+  // sıçrama görünmez (yumuşak geçiş).
+  const moving = (pose === "walking" || pose === "running") && gait > 0.015;
+  const eff = Math.min(1.7, Math.max(0, gait));
+  const p = walkPhase;
+
+  // Bir bacağın transformu: tepe noktası etrafında salınım + ileri savruluşta kalkış
+  const legT = (cx: number, off: number, swing: number, lift: number): string | undefined => {
+    if (!moving) return undefined;
+    const ph = p + off;
+    const angle = swing * eff * Math.cos(ph);
+    const up = lift * eff * Math.max(0, -Math.sin(ph));
+    return `rotate(${angle.toFixed(2)} ${cx} 38) translate(0 ${(-up).toFixed(2)})`;
+  };
+
+  // Çapraz çiftler (trot benzeri): (arka-uzak + ön-yakın) ↔ (arka-yakın + ön-uzak)
+  const PI = Math.PI;
+  const tBackFar = legT(24.5, 0, 15, 3.8);
+  const tFrontNear = legT(74.5, 0, 19, 5);
+  const tBackNear = legT(32.5, PI, 15, 3.8);
+  const tFrontFar = legT(66.5, PI, 19, 5);
+
+  // Gövde: adım başına iki kez hafif yükselme + minik yana yatış (waddle)
+  const bob = -1.3 * eff * (0.5 - 0.5 * Math.cos(2 * p));
+  const sway = 1.3 * eff * Math.sin(p);
+  const rigT = moving
+    ? `translate(0 ${bob.toFixed(2)}) rotate(${sway.toFixed(2)} 50 42)`
+    : undefined;
 
   return (
     <svg viewBox="0 0 100 60" className={cls} aria-hidden>
@@ -70,8 +116,11 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
         </radialGradient>
       </defs>
 
-      {/* Ground shadow */}
+      {/* Ground shadow (rig dışında — yürürken zıplamaz) */}
       <ellipse className="cat-shadow" cx="50" cy="56" rx="32" ry="3" />
+
+      {/* RIG — gölge hariç tüm gövde; yürürken hafif bob + waddle */}
+      <g className="cat-rig" transform={rigT}>
 
       {/* TAIL - separate elements for layered animation */}
       <g className="cat-tail-grp">
@@ -88,8 +137,8 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
 
       {/* BACK LEGS */}
       <g className="cat-legs cat-back-legs">
-        <rect className="cat-leg leg-back-far"  x="22" y="38" width="5" height="14" rx="2.4" />
-        <rect className="cat-leg leg-back-near" x="30" y="38" width="5" height="14" rx="2.4" />
+        <rect className="cat-leg leg-back-far"  x="22" y="38" width="5" height="14" rx="2.4" transform={tBackFar} />
+        <rect className="cat-leg leg-back-near" x="30" y="38" width="5" height="14" rx="2.4" transform={tBackNear} />
       </g>
 
       {/* BODY + belly + stripes */}
@@ -108,8 +157,8 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
 
       {/* FRONT LEGS - the near front leg can lift for paw-lick */}
       <g className="cat-legs cat-front-legs">
-        <rect className="cat-leg leg-front-far"  x="64" y="38" width="5" height="14" rx="2.4" />
-        <rect className="cat-leg leg-front-near" x="72" y="38" width="5" height="14" rx="2.4" />
+        <rect className="cat-leg leg-front-far"  x="64" y="38" width="5" height="14" rx="2.4" transform={tFrontFar} />
+        <rect className="cat-leg leg-front-near" x="72" y="38" width="5" height="14" rx="2.4" transform={tFrontNear} />
       </g>
 
       {/* NECK */}
@@ -163,6 +212,8 @@ export function CatSprite({ pose, action, blinking, earTwitch, mouthOpen, pupilD
       <g className="cat-hearts" aria-hidden>
         <text x="86" y="10" fontSize="6">♥</text>
       </g>
+
+      </g>{/* /cat-rig */}
     </svg>
   );
 }
