@@ -1,9 +1,9 @@
 "use client";
 
 // 3D render kedi yoldaş — Blender'da render edilmiş zencefil tabby.
-// Pozlar: koşu (sprite sheet, 36 kare @24fps) + ayakta dinlenme (idle) + mutlu (sevme tepkisi).
-// Davranış: kedi gelir → durur/dinlenir (nefes alır) → tıklayınca sevilir (kalpler + balon) → yürür gider.
-// Kaynak varlıklar: /public/cat/cat-run-sprite.png, cat-idle.png, cat-happy.png · Ayrıntı: USAGE.md
+// Pozlar: koşu (sprite sheet, 36 kare @24fps) + idle + mutlu + idle'da kafa mimik pozları (bakış/kulak).
+// Davranış: kedi gelir → durur/dinlenir (nefes alır + arada etrafa bakar/kulak titretir) → tıklayınca sevilir → yürür gider.
+// Kaynak varlıklar: /public/cat/cat-{run-sprite,idle,happy,look-up,look-down,look-back,look-front,ear-flick,blink}.png
 
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -22,6 +22,9 @@ const STORAGE = "chillout-cat3d";
 type State = "run" | "idle" | "happy";
 type Mode = "wait" | "enter" | "dwell" | "stroll";
 type Heart = { id: number; dx: number };
+type Mimic = "look-up" | "look-down" | "look-back" | "look-front" | "ear-flick" | "blink";
+
+const MIMICS: Mimic[] = ["look-up", "look-down", "look-back", "look-front", "ear-flick", "blink"];
 
 export function CatCompanion() {
   const [x, setX] = useState(-MARGIN);
@@ -30,6 +33,7 @@ export function CatCompanion() {
   const [visible, setVisible] = useState(false);
   const [hearts, setHearts] = useState<Heart[]>([]);
   const [bubble, setBubble] = useState<string | null>(null);
+  const [mimic, setMimic] = useState<Mimic | null>(null);
 
   const nameRef = useRef("Pamuk");
   const affRef = useRef(0);
@@ -243,6 +247,41 @@ export function CatCompanion() {
     };
   }, []);
 
+  // mimik döngüsü — sadece idle'da çalışır. Random aralıklarla bir kafa pozu seçer, kısa süre tutar, geri döner.
+  useEffect(() => {
+    if (!visible || state !== "idle" || reduceRef.current) {
+      setMimic(null);
+      return;
+    }
+    let alive = true;
+    let showT: number | undefined;
+    let hideT: number | undefined;
+    const schedule = () => {
+      if (!alive) return;
+      // 1.6–4.5s sonra mimiği göster
+      const delay = 1600 + Math.random() * 2900;
+      showT = window.setTimeout(() => {
+        if (!alive) return;
+        const pick = MIMICS[Math.floor(Math.random() * MIMICS.length)];
+        setMimic(pick);
+        // göz kırpma kısa, diğerleri uzun
+        const dur = pick === "blink" ? 160 : 700 + Math.random() * 900;
+        hideT = window.setTimeout(() => {
+          if (!alive) return;
+          setMimic(null);
+          schedule();
+        }, dur);
+      }, delay);
+    };
+    schedule();
+    return () => {
+      alive = false;
+      if (showT) clearTimeout(showT);
+      if (hideT) clearTimeout(hideT);
+      setMimic(null);
+    };
+  }, [visible, state]);
+
   const sheetW = W * COLS;
   const sheetH = H * ROWS;
 
@@ -261,6 +300,15 @@ export function CatCompanion() {
     >
       <div className="cat3d-flip" style={{ transform: `scaleX(${dir === "left" ? -1 : 1})` }}>
         <div className={`cat3d-sprite is-${state}`} />
+        {state === "idle" && (
+          <div
+            className="cat3d-mimic"
+            style={{
+              backgroundImage: mimic ? `url("/cat/cat-${mimic}.png")` : "none",
+              opacity: mimic ? 1 : 0,
+            }}
+          />
+        )}
       </div>
 
       {bubble && <div className="cat3d-bubble">{bubble}</div>}
@@ -309,6 +357,17 @@ export function CatCompanion() {
           background-size: 100% 100%;
           transform-origin: bottom center;
           animation: cat3d-breathe 2.7s ease-in-out infinite alternate;
+        }
+        .cat3d-mimic {
+          position: absolute;
+          inset: 0;
+          background-repeat: no-repeat;
+          background-size: 100% 100%;
+          background-position: 0 0;
+          transform-origin: bottom center;
+          transition: opacity 0.22s ease-in-out;
+          animation: cat3d-breathe 2.7s ease-in-out infinite alternate;
+          pointer-events: none;
         }
         .cat3d-sprite.is-happy {
           background-image: url("/cat/cat-happy.png");
@@ -398,8 +457,12 @@ export function CatCompanion() {
         @media (prefers-reduced-motion: reduce) {
           .cat3d-sprite.is-run,
           .cat3d-sprite.is-idle,
-          .cat3d-sprite.is-happy {
+          .cat3d-sprite.is-happy,
+          .cat3d-mimic {
             animation: none;
+          }
+          .cat3d-mimic {
+            display: none;
           }
         }
       `}</style>
