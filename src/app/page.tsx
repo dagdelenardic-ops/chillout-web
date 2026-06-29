@@ -154,6 +154,7 @@ export default function Home() {
   const [yilanStarted, setYilanStarted] = useState(false);
   const [okuStarted, setOkuStarted] = useState(false);
   const [themeOpen, setThemeOpen] = useState(false);
+  const [nefesAvangard, setNefesAvangard] = useState(false);
 
   // chime — küçük zil sesi
   const chime = (times: number) => {
@@ -419,7 +420,7 @@ export default function Home() {
       {/* fonksiyonel dock'lar */}
       <AudioPlayer />
       <SceneMixer />
-      <CatCompanion />
+      <CatCompanion activeTab={activeTab} />
 
       {/* imleç ışığı */}
       <div
@@ -507,7 +508,7 @@ export default function Home() {
 
         {/* sekme navigasyonu + tema */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
-          <nav style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 6, borderRadius: 16, border: "1px solid rgba(182,227,216,0.14)", background: "rgba(8,16,15,0.5)", backdropFilter: "blur(10px)", width: "fit-content", maxWidth: "100%" }}>
+          <nav id="cat-tab-nav" style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 6, borderRadius: 16, border: "1px solid rgba(182,227,216,0.14)", background: "rgba(8,16,15,0.5)", backdropFilter: "blur(10px)", width: "fit-content", maxWidth: "100%" }}>
             {TABS.map((t, i) => {
               const isActive = t.key === activeTab;
               const isHover = hoverTab === t.key;
@@ -851,7 +852,7 @@ export default function Home() {
           )}
 
           {/* NEFES */}
-          {activeTab === "nefes" && <BreathStudio accent={accent} accent2={accent2} />}
+          {activeTab === "nefes" && <BreathStudio accent={accent} accent2={accent2} onOpenAvangard={() => setNefesAvangard(true)} />}
 
           {/* OKU */}
           {activeTab === "oku" && (
@@ -945,6 +946,7 @@ export default function Home() {
           )}
         </section>
       </main>
+      {nefesAvangard && <AvangardStudio onClose={() => setNefesAvangard(false)} />}
     </div>
   );
 }
@@ -990,7 +992,7 @@ const BREATH_PATTERNS: { key: string; label: string; phases: BreathPhase[] }[] =
   ] },
 ];
 
-function BreathStudio({ accent, accent2 }: { accent: string; accent2: string }) {
+function BreathStudio({ accent, accent2, onOpenAvangard }: { accent: string; accent2: string; onOpenAvangard: () => void }) {
   const FD = "var(--font-display), serif";
   const FS = "var(--font-sans), sans-serif";
   const [patternKey, setPatternKey] = useState("box");
@@ -1064,13 +1066,421 @@ function BreathStudio({ accent, accent2 }: { accent: string; accent2: string }) 
             );
           })}
         </div>
-        <button type="button" onClick={() => setRunning((r) => !r)} style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "14px 26px", borderRadius: 13, border: "none", fontWeight: 700, fontSize: "0.95rem", color: "#04221d", background: `linear-gradient(90deg,${accent},${accent2})`, cursor: "pointer", fontFamily: FS }}>
-          {running ? "Durdur" : "Stüdyoyu aç"}
-          {!running && (
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
-          )}
-        </button>
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button type="button" onClick={() => setRunning((r) => !r)} style={{ display: "inline-flex", alignItems: "center", gap: 9, padding: "13px 22px", borderRadius: 13, border: "none", fontWeight: 700, fontSize: "0.9rem", color: "#04221d", background: `linear-gradient(90deg,${accent},${accent2})`, cursor: "pointer", fontFamily: FS }}>
+            {running ? "Durdur" : "Başla"}
+          </button>
+          <button type="button" onClick={onOpenAvangard} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 20px", borderRadius: 13, border: `1px solid ${accent}55`, background: `${accent}14`, fontWeight: 700, fontSize: "0.9rem", color: accent, cursor: "pointer", fontFamily: FS }}>
+            Avangard
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14" /><path d="m12 5 7 7-7 7" /></svg>
+          </button>
+        </div>
       </div>
+    </div>
+  );
+}
+
+/* ===================================================================
+   Avangard Nefes Stüdyosu — tam ekran morfing-orb deneyimi
+   (Nefes Avangard.dc.html tasarımının React portu)
+   =================================================================== */
+type AvPhase = "in" | "hold" | "out" | "rest";
+const AV_PATTERNS: Record<string, { name: string; sub: string; phases: [AvPhase, number][] }> = {
+  box:    { name: "Kutu Nefesi", sub: "4·4·4·4", phases: [["in",4],["hold",4],["out",4],["rest",4]] },
+  relax:  { name: "Rahatla",     sub: "4·7·8",   phases: [["in",4],["hold",7],["out",8]] },
+  calm:   { name: "Sakin",       sub: "5·5",     phases: [["in",5],["out",5]] },
+  energy: { name: "Enerji",      sub: "6·2·6",   phases: [["in",6],["hold",2],["out",6]] },
+};
+const AV_PHASE_INFO: Record<AvPhase, { label: string; color: string; scale: number }> = {
+  in:   { label: "Nefes Al", color: "#6df0c2", scale: 1.0 },
+  hold: { label: "Tut",      color: "#ffd373", scale: 1.0 },
+  out:  { label: "Ver",      color: "#ffa97f", scale: 0.42 },
+  rest: { label: "Bekle",    color: "#a8beb8", scale: 0.42 },
+};
+const AV_TARGETS = [2, 5, 10, 15];
+const AV_TICKS = 48;
+
+function AvangardStudio({ onClose }: { onClose: () => void }) {
+  const rootRef = useRef<HTMLDivElement>(null);
+  const acRef3 = useRef<AudioContext | null>(null);
+  const timerRef = useRef<number | null>(null);
+
+  const [patternKey, setPatternKey] = useState<string>("box");
+  const [running, setRunning] = useState(false);
+  const [phaseIdx, setPhaseIdx] = useState(0);
+  const [phaseLeftMs, setPhaseLeftMs] = useState(4000);
+  const [elapsedSec, setElapsedSec] = useState(0);
+  const [cycleCount, setCycleCount] = useState(0);
+  const [targetMin, setTargetMin] = useState(5);
+  const [soundOn, setSoundOn] = useState(true);
+  const [completed, setCompleted] = useState(false);
+
+  const pattern = AV_PATTERNS[patternKey] ?? AV_PATTERNS.box;
+  const [currentKind, currentSec] = pattern.phases[phaseIdx] ?? ["in", 4];
+  const phaseInfo = AV_PHASE_INFO[currentKind];
+  const ringColor = phaseInfo.color;
+  const countdown = Math.max(0, Math.ceil(phaseLeftMs / 1000));
+
+  const chimeAv = (kind: AvPhase) => {
+    if (!soundOn) return;
+    try {
+      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      if (!Ctx) return;
+      acRef3.current = acRef3.current || new Ctx();
+      const ctx = acRef3.current;
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.connect(g); g.connect(ctx.destination); o.type = "sine";
+      const t = ctx.currentTime;
+      o.frequency.setValueAtTime(kind === "in" ? 528 : kind === "out" ? 396 : 440, t);
+      g.gain.setValueAtTime(0.0001, t);
+      g.gain.exponentialRampToValueAtTime(0.11, t + 0.04);
+      g.gain.exponentialRampToValueAtTime(0.0001, t + 0.9);
+      o.start(t); o.stop(t + 0.95);
+    } catch { /* sessizce geç */ }
+  };
+
+  const stopTimer = () => {
+    if (timerRef.current !== null) { window.clearInterval(timerRef.current); timerRef.current = null; }
+  };
+
+  useEffect(() => {
+    if (!running) return;
+    const pat = AV_PATTERNS[patternKey] ?? AV_PATTERNS.box;
+    let pi = phaseIdx;
+    let left = phaseLeftMs;
+    let elapsed = elapsedSec;
+    let cycles = cycleCount;
+    let last = Date.now();
+    const id = window.setInterval(() => {
+      const now = Date.now();
+      const dt = now - last; last = now;
+      left -= dt; elapsed += dt / 1000;
+      let advanced = false;
+      while (left <= 0) {
+        pi = (pi + 1) % pat.phases.length;
+        if (pi === 0) cycles++;
+        left += pat.phases[pi][1] * 1000;
+        advanced = true;
+      }
+      if (advanced) chimeAv(pat.phases[pi][0]);
+      const limit = targetMin * 60;
+      if (elapsed >= limit) {
+        elapsed = limit; left = 0;
+        window.clearInterval(id); timerRef.current = null;
+        setRunning(false); setCompleted(true);
+      }
+      setPhaseIdx(pi); setPhaseLeftMs(left); setElapsedSec(elapsed); setCycleCount(cycles);
+    }, 100);
+    timerRef.current = id;
+    return () => { window.clearInterval(id); timerRef.current = null; };
+  }, [running]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ESC to close
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { stopTimer(); onClose(); } };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Cursor parallax
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    let raf: number | null = null;
+    const onMove = (e: PointerEvent) => {
+      const mx = (e.clientX / window.innerWidth - 0.5) * 2;
+      const my = (e.clientY / window.innerHeight - 0.5) * 2;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        el.style.setProperty("--avmx", mx.toFixed(3));
+        el.style.setProperty("--avmy", my.toFixed(3));
+      });
+    };
+    window.addEventListener("pointermove", onMove);
+    return () => { window.removeEventListener("pointermove", onMove); if (raf) cancelAnimationFrame(raf); };
+  }, []);
+
+  const handleToggle = () => {
+    if (running) { stopTimer(); setRunning(false); }
+    else {
+      if (completed) {
+        const firstSec = (AV_PATTERNS[patternKey] ?? AV_PATTERNS.box).phases[0][1];
+        setPhaseIdx(0); setPhaseLeftMs(firstSec * 1000); setElapsedSec(0); setCycleCount(0); setCompleted(false);
+      }
+      setRunning(true);
+    }
+  };
+
+  const handleReset = () => {
+    stopTimer(); setRunning(false);
+    const firstSec = (AV_PATTERNS[patternKey] ?? AV_PATTERNS.box).phases[0][1];
+    setPhaseIdx(0); setPhaseLeftMs(firstSec * 1000); setElapsedSec(0); setCycleCount(0); setCompleted(false);
+  };
+
+  const handlePatternSelect = (key: string) => {
+    stopTimer(); setRunning(false);
+    const p = AV_PATTERNS[key] ?? AV_PATTERNS.box;
+    setPatternKey(key); setPhaseIdx(0); setPhaseLeftMs(p.phases[0][1] * 1000);
+    setElapsedSec(0); setCycleCount(0); setCompleted(false);
+  };
+
+  const fmtTime = (sec: number) => {
+    const m = Math.floor(sec / 60).toString().padStart(2, "0");
+    const s = Math.floor(sec % 60).toString().padStart(2, "0");
+    return `${m}:${s}`;
+  };
+
+  const orbScale = running ? phaseInfo.scale : 1;
+  const orbTransition = `transform ${running ? currentSec : 0.6}s cubic-bezier(.37,0,.63,1), background 0.6s ease, box-shadow 0.6s ease`;
+  const glowColor = running ? `${ringColor}44` : "#6df0c244";
+
+  // tick ring
+  const ticks = Array.from({ length: AV_TICKS }, (_, i) => {
+    const angle = (i / AV_TICKS) * 2 * Math.PI;
+    const r = 46;
+    const cx = 50 + r * Math.sin(angle);
+    const cy = 50 - r * Math.cos(angle);
+    const isMajor = i % 12 === 0;
+    return (
+      <span key={i} style={{
+        position: "absolute", left: `${cx}%`, top: `${cy}%`,
+        width: isMajor ? 3 : 2, height: isMajor ? 10 : 5,
+        background: ringColor, opacity: isMajor ? 0.7 : 0.22,
+        borderRadius: 999, transform: `translate(-50%,-50%) rotate(${(i / AV_TICKS) * 360}deg)`,
+        transition: "background 0.6s ease",
+      }} />
+    );
+  });
+
+  const FD2 = "var(--font-display), serif";
+  const FS2 = "var(--font-sans), sans-serif";
+
+  return (
+    <div
+      ref={rootRef}
+      className="av-overlay"
+      style={{ "--avmx": "0", "--avmy": "0" } as CSSProperties}
+    >
+      {/* background */}
+      <div style={{ position: "absolute", inset: 0, background: "radial-gradient(circle at 50% 60%, #0a1614, #060d0c 70%)" }} />
+
+      {/* breath-reactive ambient */}
+      <div aria-hidden style={{
+        position: "absolute", inset: "-10%", pointerEvents: "none",
+        background: `radial-gradient(circle at 50% 52%, ${glowColor}, transparent 60%)`,
+        opacity: 0.9, transition: "background 0.6s ease",
+        transform: "translate(calc(var(--avmx)*-26px), calc(var(--avmy)*-22px))",
+      }} />
+
+      {/* scanlines */}
+      <div aria-hidden style={{
+        position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "overlay", opacity: 0.5,
+        background: "repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 3px)",
+        animation: "av-flicker 7s steps(2) infinite",
+      }} />
+
+      {/* backdrop phase word */}
+      <div aria-hidden style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none", overflow: "hidden" }}>
+        <span style={{
+          fontFamily: FD2, fontStyle: "italic", fontWeight: 300, fontSize: "22vw", lineHeight: 0.8,
+          letterSpacing: "-0.03em", color: ringColor, opacity: 0.06, whiteSpace: "nowrap",
+          transform: "translate(calc(var(--avmx)*18px), calc(var(--avmy)*14px))",
+          transition: "color 0.6s ease",
+        }}>{phaseInfo.label}</span>
+      </div>
+
+      {/* center orb stage */}
+      <div style={{ position: "absolute", inset: 0, display: "grid", placeItems: "center", pointerEvents: "none" }}>
+        <div style={{
+          position: "relative",
+          width: "min(74vmin,580px)", height: "min(74vmin,580px)",
+          display: "grid", placeItems: "center",
+          transform: "translate(calc(var(--avmx)*16px), calc(var(--avmy)*16px))",
+        }}>
+          {/* morphing orb */}
+          <div style={{
+            position: "absolute", width: "78%", height: "78%",
+            transform: `scale(${orbScale})`, transition: orbTransition,
+          }}>
+            <div style={{
+              position: "absolute", inset: 0,
+              background: `radial-gradient(circle at 38% 30%, ${ringColor}, ${ringColor}55 50%, transparent 80%)`,
+              animation: "av-morph 18s ease-in-out infinite", filter: "blur(2px)",
+              boxShadow: `inset 0 10px 60px rgba(255,255,255,.18), 0 0 80px ${ringColor}44`,
+              transition: "background 0.6s ease, box-shadow 0.6s ease",
+            }} />
+            <div style={{
+              position: "absolute", inset: "8%",
+              border: `1px solid ${ringColor}`, opacity: 0.5,
+              animation: "av-morph2 22s ease-in-out infinite",
+              transition: "border-color 0.6s ease",
+            }} />
+            <div style={{
+              position: "absolute", inset: "-6%",
+              border: `1px solid ${ringColor}`, opacity: 0.22,
+              animation: "av-morph 26s ease-in-out infinite reverse",
+              transition: "border-color 0.6s ease",
+            }} />
+          </div>
+
+          {/* tick ring */}
+          <div style={{ position: "absolute", width: "100%", height: "100%", animation: "av-spin-cw 80s linear infinite" }}>
+            {ticks}
+          </div>
+
+          {/* center readout */}
+          <div style={{
+            position: "relative", zIndex: 3, textAlign: "center", fontFamily: FS2,
+            transform: running ? "translateY(0)" : "translateY(0)",
+          }}>
+            <div style={{ fontSize: "0.7rem", fontWeight: 700, letterSpacing: "0.42em", textTransform: "uppercase", color: ringColor, transition: "color 0.6s ease" }}>
+              {running ? phaseInfo.label : "hazır"}
+            </div>
+            <div style={{ fontFamily: FD2, fontWeight: 300, fontSize: "clamp(4rem,14vmin,10rem)", lineHeight: 0.9, color: "#f7fdfa", textShadow: "0 4px 40px rgba(0,0,0,.5)" }}>
+              {running ? countdown : "·"}
+            </div>
+            <div style={{ fontSize: "0.66rem", fontWeight: 600, letterSpacing: "0.34em", textTransform: "uppercase", color: "#5d7b73" }}>
+              {pattern.name}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* chrome overlay */}
+      <div style={{ position: "relative", zIndex: 10, minHeight: "100vh", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: "30px 36px", pointerEvents: "none" }}>
+
+        {/* top bar */}
+        <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20 }}>
+          <div style={{ pointerEvents: "auto" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ width: 8, height: 8, borderRadius: "50%", background: ringColor, boxShadow: `0 0 12px ${ringColor}`, transition: "background 0.6s ease" }} />
+              <span style={{ fontWeight: 800, letterSpacing: "0.32em", fontSize: "0.88rem", fontFamily: FS2 }}>NEFES</span>
+            </div>
+            <div style={{ marginTop: 5, fontSize: "0.62rem", letterSpacing: "0.26em", textTransform: "uppercase", color: "#5d7b73" }}>nefes stüdyosu · avangard</div>
+          </div>
+          <div style={{ display: "flex", gap: 28, pointerEvents: "auto", alignItems: "flex-start" }}>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: FD2, fontSize: "1.6rem", lineHeight: 1, color: "#f2fbf7" }}>{cycleCount.toString().padStart(2, "0")}</div>
+              <div style={{ fontSize: "0.58rem", letterSpacing: "0.28em", textTransform: "uppercase", color: "#5d7b73", marginTop: 4 }}>tur</div>
+            </div>
+            <div style={{ textAlign: "right" }}>
+              <div style={{ fontFamily: FD2, fontSize: "1.6rem", lineHeight: 1, color: "#f2fbf7" }}>{fmtTime(elapsedSec)}</div>
+              <div style={{ fontSize: "0.58rem", letterSpacing: "0.28em", textTransform: "uppercase", color: "#5d7b73", marginTop: 4 }}>/ {targetMin} dk</div>
+            </div>
+            <button type="button" onClick={() => { stopTimer(); onClose(); }} aria-label="Kapat" style={{
+              pointerEvents: "auto", width: 38, height: 38, borderRadius: "50%",
+              border: "1px solid rgba(182,227,216,0.22)", background: "rgba(8,18,16,0.7)",
+              color: "#88a39c", cursor: "pointer", display: "grid", placeItems: "center",
+            }}>
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>
+            </button>
+          </div>
+        </header>
+
+        {/* middle: pattern selector */}
+        <div style={{ display: "flex", alignItems: "center" }}>
+          <nav style={{ display: "grid", gap: 3, pointerEvents: "auto" }}>
+            {Object.entries(AV_PATTERNS).map(([key, pat], i) => {
+              const isActive = key === patternKey;
+              return (
+                <button key={key} type="button" onClick={() => handlePatternSelect(key)} style={{
+                  display: "flex", alignItems: "center", gap: 14, padding: "8px 14px", borderRadius: 10,
+                  border: `1px solid ${isActive ? `${ringColor}55` : "rgba(182,227,216,0.12)"}`,
+                  background: isActive ? `${ringColor}14` : "rgba(8,16,15,0.5)",
+                  color: isActive ? "#f2fbf7" : "#5d7b73", cursor: "pointer", transition: "all .2s ease", fontFamily: FS2,
+                }}>
+                  <span style={{ fontFamily: FD2, fontSize: "0.92rem", width: "2.2ch", opacity: 0.55 }}>0{i + 1}</span>
+                  <span style={{ display: "grid", gap: 1, textAlign: "left" }}>
+                    <span style={{ fontWeight: 700, fontSize: "0.92rem", letterSpacing: "0.01em" }}>{pat.name}</span>
+                    <span style={{ fontSize: "0.62rem", letterSpacing: "0.2em", opacity: 0.6 }}>{pat.sub}</span>
+                  </span>
+                  {isActive && <span style={{ marginLeft: "auto", width: 3, height: 26, borderRadius: 999, background: ringColor, transition: "background 0.6s ease" }} />}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+
+        {/* bottom bar */}
+        <footer style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
+          {/* transport */}
+          <div style={{ display: "flex", alignItems: "center", gap: 12, pointerEvents: "auto" }}>
+            <button type="button" onClick={handleToggle} aria-label="Başla / Duraklat" style={{
+              width: 70, height: 70, borderRadius: "50%", border: "none", cursor: "pointer",
+              display: "grid", placeItems: "center", color: "#04221d",
+              background: `linear-gradient(135deg, ${ringColor}, ${ringColor}bb)`,
+              boxShadow: `0 14px 36px ${ringColor}44`, transition: "background 0.6s ease, box-shadow 0.6s ease",
+            }}>
+              {running ? (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" /><rect x="14" y="4" width="4" height="16" /></svg>
+              ) : (
+                <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M5 3l14 9-14 9z" /></svg>
+              )}
+            </button>
+            <button type="button" onClick={handleReset} style={{
+              height: 40, padding: "0 16px", borderRadius: 999, pointerEvents: "auto",
+              border: "1px solid rgba(182,227,216,.22)", background: "rgba(8,18,16,.7)",
+              color: "#bcd2cb", cursor: "pointer", fontWeight: 600, fontSize: "0.76rem",
+              letterSpacing: "0.12em", textTransform: "uppercase", fontFamily: FS2,
+            }}>Sıfırla</button>
+            <button type="button" onClick={() => setSoundOn(s => !s)} aria-label="Ses" style={{
+              height: 40, width: 40, borderRadius: 999,
+              border: `1px solid ${soundOn ? `${ringColor}55` : "rgba(182,227,216,.22)"}`,
+              background: soundOn ? `${ringColor}14` : "rgba(8,18,16,.7)",
+              color: soundOn ? ringColor : "#5d7b73", cursor: "pointer", display: "grid", placeItems: "center",
+              transition: "all .2s ease",
+            }}>
+              {soundOn ? (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><path d="M19.07 4.93a10 10 0 0 1 0 14.14" /><path d="M15.54 8.46a5 5 0 0 1 0 7.07" /></svg>
+              ) : (
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" /><line x1="23" y1="9" x2="17" y2="15" /><line x1="17" y1="9" x2="23" y2="15" /></svg>
+              )}
+            </button>
+          </div>
+
+          {/* session target */}
+          <div style={{ display: "grid", gap: 8, justifyItems: "end", pointerEvents: "auto" }}>
+            <div style={{ fontSize: "0.58rem", letterSpacing: "0.3em", textTransform: "uppercase", color: "#5d7b73", fontFamily: FS2 }}>seans hedefi</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {AV_TARGETS.map((t) => (
+                <button key={t} type="button" onClick={() => setTargetMin(t)} style={{
+                  height: 30, padding: "0 12px", borderRadius: 999, fontSize: "0.76rem", fontWeight: 600,
+                  border: `1px solid ${t === targetMin ? `${ringColor}66` : "rgba(182,227,216,.18)"}`,
+                  background: t === targetMin ? `${ringColor}18` : "rgba(8,18,16,.6)",
+                  color: t === targetMin ? ringColor : "#5d7b73", cursor: "pointer",
+                  transition: "all .2s ease", fontFamily: FS2,
+                }}>{t} dk</button>
+              ))}
+            </div>
+            <div style={{ width: 200, height: 2, background: "rgba(182,227,216,.14)", overflow: "hidden", borderRadius: 999 }}>
+              <div style={{
+                height: "100%", borderRadius: 999,
+                width: `${Math.min(100, (elapsedSec / (targetMin * 60)) * 100)}%`,
+                background: ringColor, transition: "width .3s linear, background 0.6s ease",
+              }} />
+            </div>
+          </div>
+        </footer>
+      </div>
+
+      {/* completion toast */}
+      {completed && (
+        <div style={{
+          position: "fixed", left: "50%", bottom: 30, zIndex: 50,
+          transform: "translateX(-50%)",
+          display: "flex", alignItems: "center", gap: 12,
+          padding: "12px 22px", borderRadius: 999,
+          border: `1px solid ${ringColor}66`, background: "rgba(6,16,14,.94)",
+          backdropFilter: "blur(12px)", boxShadow: "0 20px 50px rgba(0,0,0,.5)",
+          animation: "av-rise .45s ease", fontFamily: FS2,
+        }}>
+          <span style={{ width: 8, height: 8, borderRadius: "50%", background: ringColor, boxShadow: `0 0 10px ${ringColor}` }} />
+          <span style={{ fontSize: "0.84rem", fontWeight: 600, letterSpacing: "0.02em", color: "#eafaf4" }}>
+            Seans tamam — {cycleCount} tur · {fmtTime(elapsedSec)}. Aferin.
+          </span>
+        </div>
+      )}
     </div>
   );
 }
