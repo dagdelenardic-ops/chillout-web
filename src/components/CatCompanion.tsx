@@ -20,7 +20,7 @@ const PURRS = ["mırr~", "mırnav 🐾", "🥰", "daha!", "keyifli~", "prr…", 
 const STORAGE = "chillout-cat3d";
 
 type State = "run" | "idle" | "happy";
-type Mode = "wait" | "enter" | "dwell" | "leave";
+type Mode = "wait" | "enter" | "dwell" | "stroll";
 type Heart = { id: number; dx: number };
 
 export function CatCompanion() {
@@ -160,40 +160,45 @@ export function CatCompanion() {
           c.dwellUntil = t + rnd(2500, 4500);
         }
         switch (c.mode) {
+          // ekrana ilk giriş (kenardan ortaya doğru yürür)
           case "wait":
-            if (t >= c.nextAt) {
-              c.dir = Math.random() < 0.5 ? "right" : "left";
-              c.x = c.dir === "right" ? -MARGIN : vw() + MARGIN;
-              c.targetX =
-                c.dir === "right" ? rnd(vw() * 0.22, vw() * 0.55) : rnd(vw() * 0.45, vw() * 0.78);
-              c.state = "run";
-              c.mode = "enter";
-            }
-            break;
           case "enter": {
+            c.mode = "enter";
             c.x += sign * SPEED * dt;
             const reached = c.dir === "right" ? c.x >= c.targetX : c.x <= c.targetX;
             if (reached) {
               c.x = c.targetX;
               c.state = "idle";
               c.mode = "dwell";
-              c.dwellUntil = t + rnd(4000, 8000);
+              c.dwellUntil = t + rnd(6000, 12000);
             }
             break;
           }
+          // bir noktada dur ve dinlen — vaktinin çoğunu burada geçirir
           case "dwell":
             c.state = "idle";
             if (t >= c.dwellUntil) {
+              // ekranda kalarak yeni bir noktaya geçmeyi planla (asla kaybolmaz)
+              let nx = rnd(vw() * 0.12, vw() * 0.82);
+              if (Math.abs(nx - c.x) < vw() * 0.2) {
+                nx = c.x < vw() * 0.5 ? rnd(vw() * 0.55, vw() * 0.82) : rnd(vw() * 0.12, vw() * 0.45);
+              }
+              c.targetX = Math.max(MARGIN, Math.min(vw() - MARGIN, nx));
+              c.dir = c.targetX >= c.x ? "right" : "left";
               c.state = "run";
-              c.mode = "leave";
+              c.mode = "stroll";
             }
             break;
-          case "leave": {
-            c.x += sign * SPEED * dt;
-            const off = c.dir === "right" ? c.x > vw() + MARGIN : c.x < -MARGIN;
-            if (off) {
-              c.mode = "wait";
-              c.nextAt = t + rnd(5000, 11000);
+          // yeni noktaya sakince yürür, sonra yine durur
+          case "stroll": {
+            const s = c.dir === "right" ? 1 : -1;
+            c.x += s * SPEED * dt;
+            const reached = c.dir === "right" ? c.x >= c.targetX : c.x <= c.targetX;
+            if (reached) {
+              c.x = c.targetX;
+              c.state = "idle";
+              c.mode = "dwell";
+              c.dwellUntil = t + rnd(6000, 12000);
             }
             break;
           }

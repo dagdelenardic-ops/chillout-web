@@ -475,8 +475,8 @@ a {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  opacity: 0.34;
-  filter: saturate(0.52) contrast(0.74) brightness(0.52) blur(1.2px);
+  opacity: 0.52;
+  filter: saturate(0.72) contrast(0.82) brightness(0.66) blur(0.6px);
   image-rendering: auto;
   transform: scale(1.12);
   animation: background-drift 42s ease-in-out infinite alternate;
@@ -2779,6 +2779,13 @@ body { background: #070f0e; }
 
 .ana-root ::-webkit-scrollbar { width: 10px; height: 10px; }
 .ana-root ::-webkit-scrollbar-thumb { background: rgba(182, 227, 216, 0.2); border-radius: 999px; }
+
+/* yatay scroll şeridi — diğer köşeler */
+.ana-hscroll { scrollbar-width: thin; scrollbar-color: rgba(182, 227, 216, 0.3) transparent; -webkit-overflow-scrolling: touch; }
+.ana-hscroll::-webkit-scrollbar { height: 8px; }
+.ana-hscroll::-webkit-scrollbar-thumb { background: rgba(182, 227, 216, 0.22); border-radius: 999px; }
+.ana-hscroll::-webkit-scrollbar-track { background: transparent; }
+.ana-hscroll > button:hover { border-color: rgba(109, 240, 194, 0.45) !important; background: rgba(13, 26, 32, 0.9) !important; transform: translateY(-2px); }
 
 @media (prefers-reduced-motion: reduce) {
   .ana-root *,

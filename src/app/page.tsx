@@ -112,6 +112,16 @@ function rand(n: number, not?: number) {
   while (i === (not ?? -1)) i = Math.floor(Math.random() * n);
   return i;
 }
+function domainOf(url: string) {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
+}
+function faviconOf(url: string) {
+  return `https://www.google.com/s2/favicons?domain=${domainOf(url)}&sz=64`;
+}
 
 export default function Home() {
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -296,6 +306,10 @@ export default function Home() {
 
   const site = discoverySites[siteIdx];
   const myVote = siteVotes[site.id] || 0;
+  const moreSites = Array.from({ length: 22 }, (_, k) => {
+    const idx = (siteIdx + 1 + k) % discoverySites.length;
+    return { s: discoverySites[idx], idx };
+  }).filter((o) => o.idx !== siteIdx);
   const rollSite = () => setSiteIdx((i) => rand(discoverySites.length, i));
   const vote = (val: number) =>
     setSiteVotes((s) => ({ ...s, [site.id]: (s[site.id] || 0) === val ? 0 : val }));
@@ -398,7 +412,7 @@ export default function Home() {
           inset: 0,
           zIndex: -1,
           pointerEvents: "none",
-          background: "radial-gradient(circle at 50% 0%, rgba(10,22,20,0.40), rgba(6,12,11,0.80) 70%)",
+          background: "radial-gradient(circle at 50% 0%, rgba(10,22,20,0.20), rgba(6,12,11,0.58) 72%)",
         }}
       />
 
@@ -682,48 +696,104 @@ export default function Home() {
         >
           {/* KEŞFET */}
           {activeTab === "kesfet" && (
-            <div className="ana-two-col" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.3fr) 280px", gap: 22 }}>
-              <article style={{ position: "relative", borderRadius: 24, border: `1px solid ${accent}3d`, background: "linear-gradient(160deg, rgba(13,24,21,0.86), rgba(8,15,14,0.92))", padding: 34, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 26, minHeight: 380 }}>
-                <div aria-hidden style={{ position: "absolute", right: -60, top: -60, width: 260, height: 260, borderRadius: "50%", background: `radial-gradient(circle,${accent}33,transparent 70%)`, filter: "blur(20px)" }} />
-                <div style={{ position: "relative" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
-                    <span style={tagPill}>{VIBE_LABELS[site.vibe] || site.vibe}</span>
-                    <span style={{ fontSize: "0.68rem", letterSpacing: "0.16em", textTransform: "uppercase", color: "#5d7b73" }}>kaynak · {site.source === "eksi" ? "ekşi" : "global"}</span>
-                  </div>
-                  <h2 style={{ margin: "0 0 14px", fontFamily: FD, fontWeight: 400, fontSize: "clamp(2rem,3.6vw,3rem)", lineHeight: 1.02, letterSpacing: "-0.02em", color: "#f4fcf8" }}>{site.name}</h2>
-                  <p style={{ margin: 0, maxWidth: "46ch", color: "#c2d6cf", lineHeight: 1.55, fontSize: "1.02rem" }}>{site.description}</p>
-                </div>
-                <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                  <a href={site.url} target="_blank" rel="noopener noreferrer" style={{ ...primaryBtn, padding: "13px 22px" }}>
-                    Siteyi aç
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>
-                  </a>
-                  <button type="button" onClick={rollSite} style={ghostBtn}>Başka bir tane →</button>
-                  <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
-                    <button type="button" onClick={() => vote(-1)} aria-label="Beğenme" style={voteBtnStyle(myVote === -1, "dislike")}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg>
-                    </button>
-                    <button type="button" onClick={() => vote(1)} aria-label="Beğen" style={voteBtnStyle(myVote === 1, "like")}>
-                      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg>
-                    </button>
-                  </div>
-                </div>
-              </article>
-              <aside className="ana-aside-hide" style={{ display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ ...asideCard, textAlign: "center" }}>
-                  <div style={{ fontFamily: FD, fontSize: "2.4rem", lineHeight: 1, color: accent }}>{(siteIdx + 1).toString().padStart(2, "0")}</div>
-                  <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c", marginTop: 8 }}>{discoverySites.length} site</div>
-                </div>
-                <div style={{ ...asideCard, padding: 20, display: "grid", gap: 10 }}>
-                  <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c" }}>vibe filtresi</div>
-                  {VIBES.map((v) => (
-                    <div key={v.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.86rem", color: "#c2d6cf" }}>
-                      <span style={{ width: 8, height: 8, borderRadius: "50%", background: v.color }} />
-                      {v.label}
+            <div style={{ display: "grid", gap: 18 }}>
+              <div className="ana-two-col" style={{ display: "grid", gridTemplateColumns: "minmax(0,1.3fr) 280px", gap: 22 }}>
+                <article style={{ position: "relative", borderRadius: 24, border: `1px solid ${accent}3d`, background: "linear-gradient(160deg, rgba(13,24,21,0.86), rgba(8,15,14,0.92))", padding: 34, overflow: "hidden", display: "flex", flexDirection: "column", justifyContent: "space-between", gap: 26, minHeight: 380 }}>
+                  <div aria-hidden style={{ position: "absolute", right: -60, top: -60, width: 260, height: 260, borderRadius: "50%", background: `radial-gradient(circle,${accent}33,transparent 70%)`, filter: "blur(20px)" }} />
+                  <div style={{ position: "relative" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 18 }}>
+                      <span style={tagPill}>{VIBE_LABELS[site.vibe] || site.vibe}</span>
+                      <span style={{ fontSize: "0.68rem", letterSpacing: "0.16em", textTransform: "uppercase", color: "#5d7b73" }}>kaynak · {site.source === "eksi" ? "ekşi" : "global"}</span>
                     </div>
-                  ))}
+                    <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 14 }}>
+                      <img
+                        src={faviconOf(site.url)}
+                        alt=""
+                        width={42}
+                        height={42}
+                        style={{ flex: "none", borderRadius: 11, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(182,227,216,0.18)", padding: 6 }}
+                        onError={(e) => { e.currentTarget.style.display = "none"; }}
+                      />
+                      <h2 style={{ margin: 0, fontFamily: FD, fontWeight: 400, fontSize: "clamp(2rem,3.6vw,3rem)", lineHeight: 1.02, letterSpacing: "-0.02em", color: "#f4fcf8" }}>{site.name}</h2>
+                    </div>
+                    <p style={{ margin: 0, maxWidth: "46ch", color: "#c2d6cf", lineHeight: 1.55, fontSize: "1.02rem" }}>{site.description}</p>
+                    <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap", marginTop: 16, fontSize: "0.82rem", color: "#88a39c" }}>
+                      <a href={site.url} target="_blank" rel="noopener noreferrer" style={{ display: "inline-flex", alignItems: "center", gap: 6, color: accent }}>
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><path d="M2 12h20" /><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" /></svg>
+                        {domainOf(site.url)}
+                      </a>
+                      <span style={{ opacity: 0.45 }}>•</span>
+                      <span>keşif {(siteIdx + 1).toString().padStart(2, "0")} / {discoverySites.length}</span>
+                      {myVote !== 0 && (
+                        <>
+                          <span style={{ opacity: 0.45 }}>•</span>
+                          <span style={{ color: myVote === 1 ? "#6df0c2" : "#ff9898" }}>{myVote === 1 ? "beğendin" : "atladın"}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                    <a href={site.url} target="_blank" rel="noopener noreferrer" style={{ ...primaryBtn, padding: "13px 22px" }}>
+                      Siteyi aç
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>
+                    </a>
+                    <button type="button" onClick={rollSite} style={ghostBtn}>Başka bir tane →</button>
+                    <div style={{ display: "flex", gap: 8, marginLeft: "auto" }}>
+                      <button type="button" onClick={() => vote(-1)} aria-label="Beğenme" style={voteBtnStyle(myVote === -1, "dislike")}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 14V2" /><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v7a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z" /></svg>
+                      </button>
+                      <button type="button" onClick={() => vote(1)} aria-label="Beğen" style={voteBtnStyle(myVote === 1, "like")}>
+                        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M7 10v12" /><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z" /></svg>
+                      </button>
+                    </div>
+                  </div>
+                </article>
+                <aside className="ana-aside-hide" style={{ display: "grid", gap: 16, alignContent: "start" }}>
+                  <div style={{ ...asideCard, textAlign: "center" }}>
+                    <div style={{ fontFamily: FD, fontSize: "2.4rem", lineHeight: 1, color: accent }}>{(siteIdx + 1).toString().padStart(2, "0")}</div>
+                    <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c", marginTop: 8 }}>{discoverySites.length} site</div>
+                  </div>
+                  <div style={{ ...asideCard, padding: 20, display: "grid", gap: 10 }}>
+                    <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c" }}>vibe filtresi</div>
+                    {VIBES.map((v) => (
+                      <div key={v.key} style={{ display: "flex", alignItems: "center", gap: 10, fontSize: "0.86rem", color: "#c2d6cf" }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: v.color }} />
+                        {v.label}
+                      </div>
+                    ))}
+                  </div>
+                </aside>
+              </div>
+
+              {/* yatay scroll — diğer köşeler */}
+              <div style={{ display: "grid", gap: 10 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <span style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c" }}>diğer köşeler</span>
+                  <span style={{ fontSize: "0.62rem", letterSpacing: "0.08em", color: "#5d7b73" }}>← kaydır →</span>
                 </div>
-              </aside>
+                <div className="ana-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x proximity" }}>
+                  {moreSites.map(({ s, idx }) => {
+                    const vc = VIBES.find((v) => v.key === s.vibe)?.color || accent;
+                    return (
+                      <button
+                        key={s.id}
+                        type="button"
+                        onClick={() => setSiteIdx(idx)}
+                        title={`${s.name} — seç`}
+                        style={{ flex: "0 0 220px", scrollSnapAlign: "start", textAlign: "left", cursor: "pointer", display: "grid", gap: 8, padding: 16, borderRadius: 16, border: `1px solid ${vc}33`, background: "rgba(11,20,18,0.72)", color: "#c2d6cf", fontFamily: FS, transition: "border-color .18s ease, transform .18s ease, background .18s ease" }}
+                      >
+                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <img src={faviconOf(s.url)} alt="" width={18} height={18} style={{ flex: "none", borderRadius: 5 }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                          <span style={{ width: 7, height: 7, borderRadius: "50%", background: vc, flex: "none" }} />
+                          <span style={{ fontSize: "0.6rem", letterSpacing: "0.12em", textTransform: "uppercase", color: "#88a39c" }}>{VIBE_LABELS[s.vibe]}</span>
+                        </div>
+                        <div style={{ fontFamily: FD, fontSize: "1.08rem", color: "#f2fbf7", lineHeight: 1.15 }}>{s.name}</div>
+                        <div style={{ fontSize: "0.8rem", color: "#88a39c", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
           )}
 
