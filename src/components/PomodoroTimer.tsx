@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BellOff, Settings2, SkipForward, Volume2, VolumeX } from "lucide-react";
+import { recordFocusSession } from "@/lib/focusStats";
 
 export type PomodoroPhase = "focus" | "short" | "long";
 
@@ -212,6 +213,8 @@ export function PomodoroTimer({ onPhaseChange, onChatWriteChange }: PomodoroTime
         persistToday(nv);
         return nv;
       });
+      // Odak serisi log'una yaz + kediye ve panele "focus-complete" olayını yayınla
+      recordFocusSession();
       const nextCycle = cycleRef.current + 1;
       if (nextCycle >= s.longEvery) {
         setCycleCount(0);
