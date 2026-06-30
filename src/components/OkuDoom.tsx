@@ -295,10 +295,13 @@ export function OkuDoom() {
           ) : (
             <div className="oku-saved-list">
               {savedStories.map((s) => (
-                <button
+                <div
                   key={s.id}
+                  role="button"
+                  tabIndex={0}
                   className="oku-saved-item"
                   onClick={() => setReading(s)}
+                  onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setReading(s); } }}
                 >
                   <div className="oku-saved-thumb" style={{ background: toneBase(s.hero.hue, s.hero.tone) }} />
                   <div className="oku-saved-meta">
@@ -313,7 +316,7 @@ export function OkuDoom() {
                   >
                     <XIcon size={13} />
                   </button>
-                </button>
+                </div>
               ))}
             </div>
           )}

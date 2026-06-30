@@ -1087,10 +1087,10 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
 
       {!isGoogleUser ? (
         <section className="guest-name-box" aria-label="Misafir yorum adı">
-          <label htmlFor="guest-name-input">Misafir kullanıcı adı</label>
+          <label htmlFor={`guest-name-input-${mode}`}>Misafir kullanıcı adı</label>
           <div className="guest-name-row">
             <input
-              id="guest-name-input"
+              id={`guest-name-input-${mode}`}
               type="text"
               value={guestName}
               onChange={(event) => setGuestName(event.target.value.slice(0, 40))}
