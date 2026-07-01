@@ -1,22 +1,28 @@
 "use client";
 
-import { CSSProperties, useEffect, useRef, useState } from "react";
+/* eslint-disable @next/next/no-img-element -- Keşfet kartları harici favicon URL'leri gösteriyor. */
+
+import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { AudioPlayer } from "@/components/AudioPlayer";
 import { SceneMixer } from "@/components/SceneMixer";
 import { CatCompanion } from "@/components/CatCompanion";
 import { BackgroundVideoWall } from "@/components/BackgroundVideoWall";
 import { SnakeDonerGame } from "@/components/SnakeDonerGame";
 import { OkuDoom } from "@/components/OkuDoom";
-import { turkishQuotes } from "@/data/turkishQuotes";
+import { ChatBox } from "@/components/ChatBox";
+import { FocusStats } from "@/components/FocusStats";
+import { PomodoroTimer } from "@/components/PomodoroTimer";
+import { WeeklyVisitorCount } from "@/components/WeeklyVisitorCount";
 import { discoverySites } from "@/data/discoverySites";
 import { turkishRiddles } from "@/data/turkishRiddles";
+import { tellCat } from "@/lib/catEvents";
 
 /* ===================================================================
    Anasayfa — reaktif "dinlenme · odak · keşif" paneli.
    Claude Design (Anasayfa.dc.html) tasarımının React portu.
    =================================================================== */
 
-type TabKey = "kesfet" | "pomodoro" | "nefes" | "oku" | "yilan" | "bulmaca";
+type TabKey = "kesfet" | "pomodoro" | "sohbet" | "nefes" | "oku" | "yilan" | "bulmaca";
 type ThemeKey = "teal" | "magma" | "neon";
 type ThemeSel = "auto" | ThemeKey;
 
@@ -27,6 +33,7 @@ const LINE = "rgba(182,227,216,0.2)";
 const TABS: { key: TabKey; label: string }[] = [
   { key: "kesfet", label: "Keşfet" },
   { key: "pomodoro", label: "Pomodoro" },
+  { key: "sohbet", label: "Sohbet" },
   { key: "nefes", label: "Nefes" },
   { key: "oku", label: "Oku" },
   { key: "yilan", label: "Yılan" },
@@ -49,7 +56,7 @@ const THEMES: Record<ThemeKey, Theme> = {
     bg2: "#070f0e",
     blobs: ["#6df0c2", "#ffd373", "#9d8cff"],
     accent2: "#ffd373",
-    accents: { kesfet: "#6df0c2", pomodoro: "#ffd373", nefes: "#9fe9d4", oku: "#ffa97f", yilan: "#9d8cff", bulmaca: "#ffd373" },
+    accents: { kesfet: "#6df0c2", pomodoro: "#ffd373", sohbet: "#8ee6ff", nefes: "#9fe9d4", oku: "#ffa97f", yilan: "#9d8cff", bulmaca: "#ffd373" },
   },
   magma: {
     label: "Magma",
@@ -57,7 +64,7 @@ const THEMES: Record<ThemeKey, Theme> = {
     bg2: "#0c0707",
     blobs: ["#ff7a59", "#ffb347", "#ff5d8f"],
     accent2: "#ffcf6b",
-    accents: { kesfet: "#ff8a5c", pomodoro: "#ffb347", nefes: "#ff9472", oku: "#ff6f91", yilan: "#c77dff", bulmaca: "#ffcf6b" },
+    accents: { kesfet: "#ff8a5c", pomodoro: "#ffb347", sohbet: "#7bdff2", nefes: "#ff9472", oku: "#ff6f91", yilan: "#c77dff", bulmaca: "#ffcf6b" },
   },
   neon: {
     label: "Neon",
@@ -65,7 +72,7 @@ const THEMES: Record<ThemeKey, Theme> = {
     bg2: "#08060d",
     blobs: ["#ff4d9d", "#7b5cff", "#3df0ff"],
     accent2: "#ffd24d",
-    accents: { kesfet: "#ff4d9d", pomodoro: "#ffd24d", nefes: "#3df0ff", oku: "#ff7a59", yilan: "#7b5cff", bulmaca: "#ff4d9d" },
+    accents: { kesfet: "#ff4d9d", pomodoro: "#ffd24d", sohbet: "#3df0ff", nefes: "#3df0ff", oku: "#ff7a59", yilan: "#7b5cff", bulmaca: "#ff4d9d" },
   },
 };
 
@@ -82,11 +89,6 @@ const VIBE_LABELS: Record<string, string> = {
   kesif: "Keşif",
 };
 
-const P_DUR = { focus: 25 * 60, short: 5 * 60, long: 15 * 60 };
-const P_LABEL = { focus: "Odak", short: "Kısa Mola", long: "Uzun Mola" };
-const P_EVERY = 4;
-type PPhase = keyof typeof P_DUR;
-
 function themeForHour(h: number): ThemeKey {
   if (h >= 6 && h < 17) return "teal"; // gündüz
   if (h >= 17 && h < 22) return "magma"; // akşam · gün batımı
@@ -100,11 +102,6 @@ function wInfo(code: number): { label: string; icon: string } {
   if (code <= 77) return { label: "Karlı", icon: "❄️" };
   if (code <= 82) return { label: "Sağanak", icon: "🌦️" };
   return { label: "Fırtınalı", icon: "⛈️" };
-}
-function fmt(sec: number) {
-  const m = Math.floor(sec / 60).toString().padStart(2, "0");
-  const s = (sec % 60).toString().padStart(2, "0");
-  return `${m}:${s}`;
 }
 function rand(n: number, not?: number) {
   if (n <= 1) return 0;
@@ -125,7 +122,6 @@ function faviconOf(url: string) {
 
 export default function Home() {
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const acRef = useRef<AudioContext | null>(null);
   const rafRef = useRef<number | null>(null);
   const themeRef = useRef<HTMLDivElement | null>(null);
 
@@ -135,17 +131,8 @@ export default function Home() {
   const [now, setNow] = useState<Date | null>(null);
   const [weather, setWeather] = useState<{ temp: number; code: number } | null>(null);
 
-  const [quoteIdx, setQuoteIdx] = useState(0);
-  const [quoteVisible, setQuoteVisible] = useState(true);
-
   const [siteIdx, setSiteIdx] = useState(0);
   const [siteVotes, setSiteVotes] = useState<Record<string, number>>({});
-
-  const [pPhase, setPPhase] = useState<PPhase>("focus");
-  const [pSecs, setPSecs] = useState(P_DUR.focus);
-  const [pRunning, setPRunning] = useState(false);
-  const [pToday, setPToday] = useState(0);
-  const [pCycle, setPCycle] = useState(0);
 
   const [riddleIdx, setRiddleIdx] = useState(0);
   const [riddleShown, setRiddleShown] = useState(false);
@@ -156,79 +143,29 @@ export default function Home() {
   const [themeOpen, setThemeOpen] = useState(false);
   const [nefesAvangard, setNefesAvangard] = useState(false);
 
-  // chime — küçük zil sesi
-  const chime = (times: number) => {
-    try {
-      const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      if (!Ctx) return;
-      acRef.current = acRef.current || new Ctx();
-      const ctx = acRef.current;
-      const base = ctx.currentTime;
-      for (let i = 0; i < times; i++) {
-        const o = ctx.createOscillator();
-        const g = ctx.createGain();
-        o.connect(g);
-        g.connect(ctx.destination);
-        o.type = "sine";
-        const t = base + i * 0.26;
-        o.frequency.setValueAtTime(880, t);
-        o.frequency.exponentialRampToValueAtTime(523, t + 0.2);
-        g.gain.setValueAtTime(0.0001, t);
-        g.gain.exponentialRampToValueAtTime(0.28, t + 0.02);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.24);
-        o.start(t);
-        o.stop(t + 0.26);
-      }
-    } catch {
-      /* ses yoksa sessizce geç */
-    }
-  };
-
   // mount: rastgele başlangıçlar + saat + hava durumu
   useEffect(() => {
-    setNow(new Date());
-    setQuoteIdx(Math.floor(Math.random() * turkishQuotes.length));
-    setSiteIdx(Math.floor(Math.random() * discoverySites.length));
-    setRiddleIdx(Math.floor(Math.random() * turkishRiddles.length));
+    const hydrateTimer = window.setTimeout(() => {
+      setNow(new Date());
+      setSiteIdx(Math.floor(Math.random() * discoverySites.length));
+      setRiddleIdx(Math.floor(Math.random() * turkishRiddles.length));
+    }, 0);
     fetch(
       "https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current=temperature_2m,weathercode&timezone=Europe/Istanbul"
     )
       .then((r) => r.json())
       .then((d) => setWeather({ temp: Math.round(d.current.temperature_2m), code: d.current.weathercode }))
       .catch(() => {});
+    return () => window.clearTimeout(hydrateTimer);
   }, []);
 
-  // saniyelik tik — saat + pomodoro sayacı
+  // saniyelik tik — saat
   useEffect(() => {
     const id = window.setInterval(() => {
       setNow(new Date());
-      setPSecs((prev) => {
-        if (!pRunning) return prev;
-        const next = prev - 1;
-        if (next > 0) return next;
-        // faz sonu
-        chime(pPhase === "focus" ? 3 : 2);
-        if (pPhase === "focus") {
-          const nc = pCycle + 1;
-          setPToday((t) => t + 1);
-          if (nc >= P_EVERY) {
-            setPCycle(0);
-            setPPhase("long");
-            setPRunning(false);
-            return P_DUR.long;
-          }
-          setPCycle(nc);
-          setPPhase("short");
-          setPRunning(false);
-          return P_DUR.short;
-        }
-        setPPhase("focus");
-        setPRunning(false);
-        return P_DUR.focus;
-      });
     }, 1000);
     return () => window.clearInterval(id);
-  }, [pRunning, pPhase, pCycle]);
+  }, []);
 
   // imleç → CSS değişkenleri (spotlight + parallax)
   useEffect(() => {
@@ -272,6 +209,75 @@ export default function Home() {
     };
   }, [themeOpen]);
 
+  useEffect(() => {
+    let scroller: HTMLElement | null = null;
+    let pointerId = -1;
+    let startX = 0;
+    let startScrollLeft = 0;
+    let moved = false;
+    let suppressClick = false;
+
+    const finishDrag = () => {
+      if (!scroller) return;
+      scroller.classList.remove("is-dragging");
+      if (moved) {
+        suppressClick = true;
+        window.setTimeout(() => {
+          suppressClick = false;
+        }, 0);
+      }
+      scroller = null;
+      pointerId = -1;
+      moved = false;
+    };
+
+    const onPointerDown = (event: PointerEvent) => {
+      if (event.pointerType === "mouse" && event.button !== 0) return;
+      const target = event.target as Element | null;
+      const nextScroller = target?.closest<HTMLElement>(".ana-drag-scroll");
+      if (!nextScroller) return;
+      scroller = nextScroller;
+      pointerId = event.pointerId;
+      startX = event.clientX;
+      startScrollLeft = nextScroller.scrollLeft;
+      moved = false;
+      nextScroller.classList.add("is-dragging");
+      nextScroller.setPointerCapture?.(event.pointerId);
+    };
+
+    const onPointerMove = (event: PointerEvent) => {
+      if (!scroller || event.pointerId !== pointerId) return;
+      const dx = event.clientX - startX;
+      if (Math.abs(dx) > 4) {
+        moved = true;
+        scroller.scrollLeft = startScrollLeft - dx;
+        event.preventDefault();
+      }
+    };
+
+    const onClick = (event: MouseEvent) => {
+      if (!suppressClick) return;
+      const target = event.target as Element | null;
+      if (!target?.closest(".ana-drag-scroll")) return;
+      event.preventDefault();
+      event.stopPropagation();
+      suppressClick = false;
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("pointermove", onPointerMove, { passive: false });
+    document.addEventListener("pointerup", finishDrag);
+    document.addEventListener("pointercancel", finishDrag);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", finishDrag);
+      document.removeEventListener("pointercancel", finishDrag);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, []);
+
   // efektif tema + aksan
   const effKey: ThemeKey = theme === "auto" ? themeForHour((now ?? new Date()).getHours()) : theme;
   const th = THEMES[effKey];
@@ -296,38 +302,109 @@ export default function Home() {
   const w = weather ? wInfo(weather.code) : { label: "Parçalı Bulutlu", icon: "⛅" };
   const wTemp = `${weather ? weather.temp : 18}°C`;
 
-  const quote = turkishQuotes[quoteIdx];
-  const newQuote = () => {
-    setQuoteVisible(false);
-    window.setTimeout(() => {
-      setQuoteIdx((i) => rand(turkishQuotes.length, i));
-      setQuoteVisible(true);
-    }, 220);
-  };
-
   const site = discoverySites[siteIdx];
   const myVote = siteVotes[site.id] || 0;
-  const moreSites = Array.from({ length: 22 }, (_, k) => {
-    const idx = (siteIdx + 1 + k) % discoverySites.length;
-    return { s: discoverySites[idx], idx };
-  }).filter((o) => o.idx !== siteIdx);
-  const rollSite = () => setSiteIdx((i) => rand(discoverySites.length, i));
-  const vote = (val: number) =>
+  const siteEntries = useMemo(
+    () => discoverySites.map((s, idx) => ({ s, idx })),
+    []
+  );
+  const moreSites = useMemo(
+    () =>
+      Array.from({ length: Math.min(36, discoverySites.length - 1) }, (_, k) => {
+        const idx = (siteIdx + 1 + k) % discoverySites.length;
+        return { s: discoverySites[idx], idx };
+      }).filter((o) => o.idx !== siteIdx),
+    [siteIdx]
+  );
+  const quickPicks = useMemo(
+    () =>
+      VIBES.map((v, vibeIndex) => {
+        const entries = siteEntries.filter(({ s }) => s.vibe === v.key);
+        if (!entries.length) return null;
+        return entries[(siteIdx + vibeIndex * 7) % entries.length];
+      }).filter((entry): entry is { s: typeof discoverySites[number]; idx: number } =>
+        Boolean(entry)
+      ),
+    [siteEntries, siteIdx]
+  );
+  const vibeRows = useMemo(
+    () =>
+      VIBES.map((v, vibeIndex) => {
+        const entries = siteEntries.filter(({ s }) => s.vibe === v.key);
+        const start = entries.length ? (siteIdx + vibeIndex * 5) % entries.length : 0;
+        const items = Array.from(
+          { length: Math.min(14, entries.length) },
+          (_, k) => entries[(start + k) % entries.length]
+        );
+        return { ...v, items };
+      }).filter((row) => row.items.length > 0),
+    [siteEntries, siteIdx]
+  );
+  const selectSite = (idx: number) => {
+    setSiteIdx(idx);
+    tellCat({
+      pool: [
+        "Bu köşeyi sevdim, biraz kurcalayalım.",
+        "Yeni sekme kokusu aldım.",
+        "Bunu açarsan ben de kenardan izlerim.",
+        "Güzel seçim. Merak patilerim çalıştı.",
+      ],
+    });
+  };
+  const rollSite = () => {
+    setSiteIdx((i) => rand(discoverySites.length, i));
+    tellCat({
+      pool: [
+        "Rastgelelik candır.",
+        "Başka kapı açıldı.",
+        "Bunu ben seçmiş gibi davranalım.",
+        "Yeni keşif düştü, gözüm üstünde.",
+      ],
+    });
+  };
+  const vote = (val: number) => {
     setSiteVotes((s) => ({ ...s, [site.id]: (s[site.id] || 0) === val ? 0 : val }));
-
-  const pTotal = P_DUR[pPhase];
-  const pProg = (pTotal - pSecs) / pTotal;
-  const pRingOffset = 691 - pProg * 691;
+    tellCat(
+      val === 1
+        ? { pool: ["Beğeni geldi, kuyruğum onayladı.", "Bunu favorilere yazalım mı?", "İyi seçim, burası ışıldıyor."] }
+        : { pool: ["Atladık gitti.", "Tamam, bu sana göre değilmiş.", "Kötü değil ama daha iyisini buluruz."] }
+    );
+  };
+  const activateTab = (tab: TabKey) => {
+    setActiveTab(tab);
+    const label = TABS.find((t) => t.key === tab)?.label ?? tab;
+    tellCat({
+      pool: [
+        `${label} tarafına geçtik.`,
+        `Ben ${label} nöbetindeyim.`,
+        `${label} açıldı, pati kontrolü tamam.`,
+      ],
+    });
+  };
 
   const riddle = turkishRiddles[riddleIdx];
   const revealRiddle = () => {
     if (riddleShown) return;
     setRiddleShown(true);
     setSolvedCount((c) => c + 1);
+    tellCat({
+      pool: [
+        "Cevap ortaya çıktı, şimdi akıllı görünme vakti.",
+        "Ben biliyordum ama spoiler vermedim.",
+        "Güzel hamle, beyin çalıştı.",
+      ],
+    });
   };
   const nextRiddle = () => {
     setRiddleIdx((i) => rand(turkishRiddles.length, i));
     setRiddleShown(false);
+    tellCat({
+      pool: [
+        "Yeni bilmece geldi.",
+        "Bunu çözersen saygım artar.",
+        "Kafam yandı ama sen yaparsın.",
+      ],
+    });
   };
 
   // ---- ortak stil parçaları ----
@@ -353,12 +430,6 @@ export default function Home() {
     transition: "background .6s ease",
   } as CSSProperties;
 
-  const cardBase: CSSProperties = {
-    borderRadius: 24,
-    border: `1px solid ${LINE}`,
-    background: "linear-gradient(160deg, rgba(13,24,21,0.86), rgba(8,15,14,0.92))",
-    padding: 34,
-  };
   const asideCard: CSSProperties = {
     borderRadius: 20,
     border: "1px solid rgba(182,227,216,0.18)",
@@ -455,7 +526,7 @@ export default function Home() {
       </div>
       <div aria-hidden style={{ position: "absolute", inset: 0, pointerEvents: "none", mixBlendMode: "overlay", background: "repeating-linear-gradient(0deg, rgba(255,255,255,.05) 0 1px, transparent 1px 3px)", animation: "ana-flicker 8s steps(2) infinite" }} />
 
-      <main style={{ position: "relative", zIndex: 2, maxWidth: 1180, margin: "0 auto", padding: "30px 28px 120px", display: "grid", gap: 26 }}>
+      <main className="ana-main" style={{ position: "relative", zIndex: 2, maxWidth: 1180, margin: "0 auto", padding: "30px 28px 120px", display: "grid", gap: 26 }}>
         {/* üst bar */}
         <header style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 20, flexWrap: "wrap" }}>
           <div>
@@ -466,16 +537,19 @@ export default function Home() {
             <div style={{ marginTop: 7, fontSize: "0.64rem", letterSpacing: "0.26em", textTransform: "uppercase", color: "#5d7b73" }}>dinlenme · odak · keşif</div>
           </div>
 
-          {/* hava + saat */}
-          <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 18px", borderRadius: 16, border: "1px solid rgba(182,227,216,0.2)", background: "rgba(9,18,16,0.5)", backdropFilter: "blur(10px)" }}>
-            <div style={{ fontFamily: FD, fontSize: "1.5rem", lineHeight: 1, color: "#f2fbf7", fontVariantNumeric: "tabular-nums" }}>{clock}</div>
-            <div style={{ width: 1, height: 30, background: "rgba(182,227,216,0.18)" }} />
-            <div style={{ display: "grid", gap: 3 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontSize: "1.1rem" }}>{w.icon}</span>
-                <span style={{ fontFamily: FD, fontSize: "1.15rem", color: "#f2fbf7" }}>{wTemp}</span>
+          {/* hava + saat + son hafta kişi sayısı */}
+          <div className="hero-status-stack">
+            <WeeklyVisitorCount />
+            <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "12px 18px", borderRadius: 16, border: "1px solid rgba(182,227,216,0.2)", background: "rgba(9,18,16,0.5)", backdropFilter: "blur(10px)" }}>
+              <div style={{ fontFamily: FD, fontSize: "1.5rem", lineHeight: 1, color: "#f2fbf7", fontVariantNumeric: "tabular-nums" }}>{clock}</div>
+              <div style={{ width: 1, height: 30, background: "rgba(182,227,216,0.18)" }} />
+              <div style={{ display: "grid", gap: 3 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: "1.1rem" }}>{w.icon}</span>
+                  <span style={{ fontFamily: FD, fontSize: "1.15rem", color: "#f2fbf7" }}>{wTemp}</span>
+                </div>
+                <div style={{ fontSize: "0.66rem", color: "#88a39c", letterSpacing: "0.02em" }}>İstanbul · {w.label}</div>
               </div>
-              <div style={{ fontSize: "0.66rem", color: "#88a39c", letterSpacing: "0.02em" }}>İstanbul · {w.label}</div>
             </div>
           </div>
         </header>
@@ -492,22 +566,8 @@ export default function Home() {
           <p style={{ margin: 0, maxWidth: "54ch", color: "#bcd2cb", lineHeight: 1.55, fontSize: "1.02rem" }}>Rahatla, çalış, eğlen — hepsi tek yerde. Bir köşe seç, ritmini bul.</p>
         </section>
 
-        {/* alıntı şeridi */}
-        <section style={{ position: "relative", borderRadius: 22, border: "1px solid rgba(182,227,216,0.18)", background: "linear-gradient(110deg, rgba(13,24,21,0.7), rgba(9,16,15,0.82))", padding: "26px 30px", overflow: "hidden" }}>
-          <span style={{ position: "absolute", left: 14, top: -18, fontFamily: FD, fontStyle: "italic", fontSize: "7rem", lineHeight: 1, color: accent, opacity: 0.18 }}>&ldquo;</span>
-          <div style={{ position: "relative", display: "flex", alignItems: "flex-end", justifyContent: "space-between", gap: 20, flexWrap: "wrap", opacity: quoteVisible ? 1 : 0, transition: "opacity .25s ease" }}>
-            <div style={{ maxWidth: "62ch" }}>
-              <p style={{ margin: "0 0 10px", fontFamily: FD, fontWeight: 400, fontSize: "clamp(1.1rem,2vw,1.5rem)", lineHeight: 1.4, color: "#eef9f4" }}>{quote.quote}</p>
-              <p style={{ margin: 0, fontSize: "0.84rem", letterSpacing: "0.06em", color: "#88a39c" }}>— {quote.author}</p>
-            </div>
-            <button type="button" onClick={newQuote} aria-label="Yeni söz" style={{ flex: "none", width: 44, height: 44, borderRadius: "50%", display: "grid", placeItems: "center", cursor: "pointer", border: "1px solid rgba(182,227,216,0.24)", background: "rgba(9,18,16,0.7)", color: "#bcd2cb" }}>
-              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15-6.7L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15 6.7L3 16" /></svg>
-            </button>
-          </div>
-        </section>
-
         {/* sekme navigasyonu + tema */}
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
+        <div className="ana-nav-row" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16, flexWrap: "wrap" }}>
           <nav id="cat-tab-nav" style={{ display: "flex", flexWrap: "wrap", gap: 4, padding: 6, borderRadius: 16, border: "1px solid rgba(182,227,216,0.14)", background: "rgba(8,16,15,0.5)", backdropFilter: "blur(10px)", width: "fit-content", maxWidth: "100%" }}>
             {TABS.map((t, i) => {
               const isActive = t.key === activeTab;
@@ -516,7 +576,7 @@ export default function Home() {
                 <button
                   key={t.key}
                   type="button"
-                  onClick={() => setActiveTab(t.key)}
+                  onClick={() => activateTab(t.key)}
                   onMouseEnter={() => setHoverTab(t.key)}
                   onMouseLeave={() => setHoverTab((h) => (h === t.key ? null : h))}
                   style={{
@@ -548,6 +608,7 @@ export default function Home() {
           {/* tema — sinmiş çip: durağanken aktif temayı gösterir, tıkla ile açılır */}
           <div
             ref={themeRef}
+            className="ana-theme-wrap"
             style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "flex-end" }}
           >
             <button
@@ -732,9 +793,34 @@ export default function Home() {
                         </>
                       )}
                     </div>
+                    <div className="discover-quick-grid" style={{ marginTop: 22 }}>
+                      {quickPicks.map(({ s, idx }) => {
+                        const vc = VIBES.find((v) => v.key === s.vibe)?.color || accent;
+                        return (
+                          <button
+                            key={`quick-${s.id}`}
+                            type="button"
+                            onClick={() => selectSite(idx)}
+                            style={{ border: `1px solid ${vc}33`, background: "rgba(7,16,15,0.58)", color: "#d5e4df", borderRadius: 14, padding: "12px 13px", display: "grid", gap: 7, textAlign: "left", cursor: "pointer", fontFamily: FS, minWidth: 0 }}
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                              <img src={faviconOf(s.url)} alt="" width={17} height={17} style={{ flex: "none", borderRadius: 5 }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                              <span style={{ fontSize: "0.6rem", letterSpacing: "0.12em", textTransform: "uppercase", color: vc, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{VIBE_LABELS[s.vibe]}</span>
+                            </span>
+                            <strong style={{ fontFamily: FD, fontWeight: 400, color: "#f2fbf7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</strong>
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                   <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-                    <a href={site.url} target="_blank" rel="noopener noreferrer" style={{ ...primaryBtn, padding: "13px 22px" }}>
+                    <a
+                      href={site.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      onClick={() => tellCat({ pool: ["Dış dünyaya açılıyoruz.", "Sekme kapısı aralandı.", "Ben buradayım, sen gez."] })}
+                      style={{ ...primaryBtn, padding: "13px 22px" }}
+                    >
                       Siteyi aç
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M7 17 17 7" /><path d="M7 7h10v10" /></svg>
                     </a>
@@ -772,14 +858,14 @@ export default function Home() {
                   <span style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c" }}>diğer köşeler</span>
                   <span style={{ fontSize: "0.62rem", letterSpacing: "0.08em", color: "#5d7b73" }}>← kaydır →</span>
                 </div>
-                <div className="ana-hscroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x proximity" }}>
+                <div className="ana-hscroll ana-drag-scroll" style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 8, scrollSnapType: "x proximity" }}>
                   {moreSites.map(({ s, idx }) => {
                     const vc = VIBES.find((v) => v.key === s.vibe)?.color || accent;
                     return (
                       <button
                         key={s.id}
                         type="button"
-                        onClick={() => setSiteIdx(idx)}
+                        onClick={() => selectSite(idx)}
                         title={`${s.name} — seç`}
                         style={{ flex: "0 0 220px", scrollSnapAlign: "start", textAlign: "left", cursor: "pointer", display: "grid", gap: 8, padding: 16, borderRadius: 16, border: `1px solid ${vc}33`, background: "rgba(11,20,18,0.72)", color: "#c2d6cf", fontFamily: FS, transition: "border-color .18s ease, transform .18s ease, background .18s ease" }}
                       >
@@ -795,64 +881,68 @@ export default function Home() {
                   })}
                 </div>
               </div>
+
+              <div className="discover-vibe-sections">
+                {vibeRows.map((row) => (
+                  <section key={row.key} className="discover-vibe-row">
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: "0.66rem", letterSpacing: "0.18em", textTransform: "uppercase", color: row.color }}>
+                        <span style={{ width: 8, height: 8, borderRadius: "50%", background: row.color }} />
+                        {row.label}
+                      </span>
+                      <span style={{ fontSize: "0.62rem", color: "#5d7b73" }}>{row.items.length} öneri</span>
+                    </div>
+                    <div className="ana-hscroll ana-drag-scroll compact" style={{ display: "flex", gap: 10, overflowX: "auto", paddingBottom: 6, scrollSnapType: "x proximity" }}>
+                      {row.items.map(({ s, idx }) => (
+                        <button
+                          key={`${row.key}-${s.id}`}
+                          type="button"
+                          onClick={() => selectSite(idx)}
+                          title={`${s.name} — seç`}
+                          style={{ flex: "0 0 190px", scrollSnapAlign: "start", textAlign: "left", cursor: "pointer", display: "grid", gap: 7, padding: 13, borderRadius: 14, border: `1px solid ${row.color}2f`, background: "rgba(9,18,16,0.64)", color: "#c2d6cf", fontFamily: FS }}
+                        >
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                            <img src={faviconOf(s.url)} alt="" width={17} height={17} style={{ flex: "none", borderRadius: 5 }} onError={(e) => { e.currentTarget.style.display = "none"; }} />
+                            <span style={{ fontFamily: FD, fontSize: "1rem", color: "#f2fbf7", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
+                          </div>
+                          <span style={{ fontSize: "0.75rem", color: "#88a39c", lineHeight: 1.35, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{s.description}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </section>
+                ))}
+              </div>
             </div>
           )}
 
           {/* POMODORO */}
           {activeTab === "pomodoro" && (
-            <div className="ana-two-col" style={{ display: "grid", gridTemplateColumns: "minmax(0,1fr) 300px", gap: 22 }}>
-              <article style={{ ...cardBase, padding: 30, display: "flex", flexDirection: "column", alignItems: "center", gap: 22 }}>
-                <span style={{ ...tagPill, padding: "5px 12px", fontSize: "0.7rem" }}>{P_LABEL[pPhase]}</span>
-                <div style={{ position: "relative", width: 260, height: 260, display: "grid", placeItems: "center" }}>
-                  <svg viewBox="0 0 240 240" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", transform: "rotate(-90deg)" }}>
-                    <circle cx="120" cy="120" r="110" fill="none" stroke="rgba(182,227,216,0.12)" strokeWidth="9" />
-                    <circle cx="120" cy="120" r="110" fill="none" stroke={accent} strokeWidth="9" strokeLinecap="round" strokeDasharray="691" strokeDashoffset={pRingOffset} style={{ transition: "stroke-dashoffset .5s linear, stroke .5s ease" }} />
-                  </svg>
-                  <div style={{ textAlign: "center", display: "grid", gap: 6 }}>
-                    <span style={{ fontFamily: FD, fontSize: "3.4rem", lineHeight: 1, color: "#f7f7f3", fontVariantNumeric: "tabular-nums" }}>{fmt(pSecs)}</span>
-                    <span style={{ fontSize: "0.78rem", letterSpacing: "0.14em", textTransform: "uppercase", fontWeight: 600, color: accent }}>{P_LABEL[pPhase]}</span>
-                  </div>
-                </div>
-                <div style={{ display: "flex", alignItems: "center", gap: 11, flexWrap: "wrap", justifyContent: "center" }}>
-                  <button type="button" onClick={() => setPRunning((r) => !r)} style={{ ...primaryBtn, padding: "13px 30px", fontSize: "0.95rem" }}>{pRunning ? "Duraklat" : pSecs < pTotal ? "Devam" : "Başlat"}</button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      // atla
-                      if (pPhase === "focus") {
-                        const nc = pCycle + 1;
-                        if (nc >= P_EVERY) { setPCycle(0); setPPhase("long"); setPSecs(P_DUR.long); }
-                        else { setPCycle(nc); setPPhase("short"); setPSecs(P_DUR.short); }
-                      } else { setPPhase("focus"); setPSecs(P_DUR.focus); }
-                      setPRunning(false);
-                    }}
-                    style={{ ...ghostBtn, padding: "13px 18px", fontSize: "0.88rem" }}
-                  >
-                    Atla
-                  </button>
-                  <button type="button" onClick={() => { setPRunning(false); setPPhase("focus"); setPCycle(0); setPSecs(P_DUR.focus); }} style={{ ...ghostBtn, padding: "13px 18px", fontSize: "0.88rem" }}>Sıfırla</button>
-                </div>
-              </article>
-              <aside className="ana-aside-hide" style={{ display: "grid", gap: 16, alignContent: "start" }}>
-                <div style={{ ...asideCard, textAlign: "center" }}>
-                  <div style={{ fontFamily: FD, fontSize: "2.6rem", lineHeight: 1, color: "#f7f7f3" }}>{pToday}</div>
-                  <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c", marginTop: 8 }}>bugün tamamlanan 🍅</div>
-                </div>
-                <div style={{ ...asideCard, padding: 20, display: "grid", gap: 12 }}>
-                  <div style={{ fontSize: "0.66rem", letterSpacing: "0.2em", textTransform: "uppercase", color: "#88a39c" }}>tur döngüsü</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {Array.from({ length: P_EVERY }, (_, i) => (
-                      <span key={i} style={{ width: 22, height: 6, borderRadius: 999, background: i < pCycle ? accent : "rgba(182,227,216,0.18)" }} />
-                    ))}
-                  </div>
-                  <p style={{ margin: 0, fontSize: "0.82rem", color: "#88a39c", lineHeight: 1.5 }}>25 dk odak · 5 dk kısa mola · 4 turda bir uzun mola.</p>
-                </div>
-              </aside>
+            <div
+              className="pomodoro-grid ana-pomodoro-grid"
+              style={{
+                gridTemplateColumns: "minmax(0, 1fr) minmax(320px, 0.86fr)",
+                gridTemplateAreas: '"pomodoro tasks"',
+              }}
+            >
+              <div className="pomodoro-block">
+                <PomodoroTimer />
+                <FocusStats />
+              </div>
+              <div className="tasks-block">
+                <ChatBox mode="tasks" />
+              </div>
+            </div>
+          )}
+
+          {/* SOHBET */}
+          {activeTab === "sohbet" && (
+            <div className="ana-chat-screen">
+              <ChatBox mode="all" />
             </div>
           )}
 
           {/* NEFES */}
-          {activeTab === "nefes" && <BreathStudio accent={accent} accent2={accent2} onOpenAvangard={() => setNefesAvangard(true)} />}
+          {activeTab === "nefes" && <BreathStudio accent={accent} accent2={accent2} onOpenAvangard={() => { setNefesAvangard(true); tellCat({ pool: ["Avangard nefes modu açıldı.", "Işıklar değişti, sakinleşiyoruz.", "Nefes stüdyosu: ben de yavaşladım."] }); }} />}
 
           {/* OKU */}
           {activeTab === "oku" && (
@@ -867,7 +957,7 @@ export default function Home() {
                     <span style={{ fontSize: "0.68rem", letterSpacing: "0.18em", textTransform: "uppercase", color: "#ffba99" }}>günün okuması</span>
                     <h2 style={{ margin: "10px 0 12px", fontFamily: FD, fontWeight: 400, fontSize: "clamp(2rem,3.6vw,3rem)", lineHeight: 1.04, color: "#fdf3ee" }}>Bir fincan çay molası</h2>
                     <p style={{ margin: "0 0 24px", maxWidth: "48ch", color: "#e6d2c8", lineHeight: 1.6 }}>Kısa, sıcak metinlerle zihnini dinlendir. Her gün yeni bir parça, tam bir mola boyu.</p>
-                    <button type="button" onClick={() => setOkuStarted(true)} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 24px", borderRadius: 13, border: "none", fontWeight: 700, fontSize: "0.92rem", color: "#2a1109", background: "linear-gradient(90deg,#ffd373,#ffa97f)", cursor: "pointer", fontFamily: FS }}>Okumaya başla →</button>
+                    <button type="button" onClick={() => { setOkuStarted(true); tellCat({ pool: ["Okuma modu açıldı, sessiz patiler.", "Ben omzundan okuyacağım.", "Hikaye zamanı geldi."] }); }} style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "13px 24px", borderRadius: 13, border: "none", fontWeight: 700, fontSize: "0.92rem", color: "#2a1109", background: "linear-gradient(90deg,#ffd373,#ffa97f)", cursor: "pointer", fontFamily: FS }}>Okumaya başla →</button>
                   </div>
                 </article>
                 <aside className="ana-aside-hide" style={{ display: "grid", gap: 12, alignContent: "start" }}>
@@ -901,7 +991,7 @@ export default function Home() {
                     <span style={{ position: "absolute", left: 100, top: 100, width: 23, height: 23, borderRadius: 6, background: "#d9d2ff" }} />
                     <span style={{ position: "absolute", left: 215, top: 25, width: 22, height: 22, borderRadius: "50%", background: "#ffa97f", boxShadow: "0 0 14px #ffa97f" }} />
                   </div>
-                  <button type="button" onClick={() => setYilanStarted(true)} style={{ border: "none", borderRadius: 13, padding: "14px 30px", cursor: "pointer", fontWeight: 700, fontSize: "0.95rem", color: "#15102a", background: "linear-gradient(90deg,#9d8cff,#6df0c2)", fontFamily: FS }}>Yılan-Döner&apos;i başlat →</button>
+                  <button type="button" onClick={() => { setYilanStarted(true); tellCat({ pool: ["Yılan-Döner başlıyor, kuyruğa dikkat.", "Ben skor hakemiyim.", "Döner avı başladı."] }); }} style={{ border: "none", borderRadius: 13, padding: "14px 30px", cursor: "pointer", fontWeight: 700, fontSize: "0.95rem", color: "#15102a", background: "linear-gradient(90deg,#9d8cff,#6df0c2)", fontFamily: FS }}>Yılan-Döner&apos;i başlat →</button>
                 </article>
                 <aside className="ana-aside-hide" style={{ display: "grid", gap: 16, alignContent: "start" }}>
                   <div style={{ ...asideCard, textAlign: "center" }}>
@@ -1006,8 +1096,10 @@ function BreathStudio({ accent, accent2, onOpenAvangard }: { accent: string; acc
     if (!running) return;
     let pi = 0;
     let remaining = pattern.phases[0].secs;
-    setPhaseIdx(0);
-    setCount(remaining);
+    const resetTimer = window.setTimeout(() => {
+      setPhaseIdx(0);
+      setCount(remaining);
+    }, 0);
     const id = window.setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
@@ -1017,7 +1109,10 @@ function BreathStudio({ accent, accent2, onOpenAvangard }: { accent: string; acc
       }
       setCount(remaining);
     }, 1000);
-    return () => window.clearInterval(id);
+    return () => {
+      window.clearTimeout(resetTimer);
+      window.clearInterval(id);
+    };
   }, [running, pattern]);
 
   // halka ölçeği: nefes al → 1, ver → 0.62, tut → mevcut
@@ -1180,7 +1275,7 @@ function AvangardStudio({ onClose }: { onClose: () => void }) {
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { stopTimer(); onClose(); } };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [onClose]);
 
   // Cursor parallax
   useEffect(() => {

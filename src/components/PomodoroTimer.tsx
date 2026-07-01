@@ -153,15 +153,18 @@ export function PomodoroTimer({ onPhaseChange, onChatWriteChange }: PomodoroTime
 
   // === Mount: ayarları, günlük sayacı ve bildirim durumunu yükle ===
   useEffect(() => {
-    const s = loadSettings();
-    setSettings(s);
-    setSecondsLeft(s.focusMin * 60);
-    setTodayCount(loadTodayCount());
-    if (!("Notification" in window)) {
-      setNotifPerm("unsupported");
-    } else {
-      setNotifPerm(Notification.permission);
-    }
+    const hydrateTimer = window.setTimeout(() => {
+      const s = loadSettings();
+      setSettings(s);
+      setSecondsLeft(s.focusMin * 60);
+      setTodayCount(loadTodayCount());
+      if (!("Notification" in window)) {
+        setNotifPerm("unsupported");
+      } else {
+        setNotifPerm(Notification.permission);
+      }
+    }, 0);
+    return () => window.clearTimeout(hydrateTimer);
   }, []);
 
   // === Ayarları kaydet ===
@@ -202,45 +205,52 @@ export function PomodoroTimer({ onPhaseChange, onChatWriteChange }: PomodoroTime
   useEffect(() => {
     if (!isRunning || secondsLeft > 0) return;
 
-    const s = settingsRef.current;
-    const current = phaseRef.current;
-    if (s.sound) playChime(current === "focus" ? 3 : 2);
+    const finishTimer = window.setTimeout(() => {
+      const s = settingsRef.current;
+      const current = phaseRef.current;
+      if (s.sound) playChime(current === "focus" ? 3 : 2);
 
-    let next: PomodoroPhase;
-    if (current === "focus") {
-      setTodayCount((c) => {
-        const nv = c + 1;
-        persistToday(nv);
-        return nv;
-      });
-      // Odak serisi log'una yaz + kediye ve panele "focus-complete" olayını yayınla
-      recordFocusSession();
-      const nextCycle = cycleRef.current + 1;
-      if (nextCycle >= s.longEvery) {
-        setCycleCount(0);
-        next = "long";
-        notify("Odak tamamlandı 🍅", `Hak ettin — ${s.longMin} dk uzun mola.`);
+      let next: PomodoroPhase;
+      if (current === "focus") {
+        setTodayCount((c) => {
+          const nv = c + 1;
+          persistToday(nv);
+          return nv;
+        });
+        // Odak serisi log'una yaz + kediye ve panele "focus-complete" olayını yayınla
+        recordFocusSession();
+        const nextCycle = cycleRef.current + 1;
+        if (nextCycle >= s.longEvery) {
+          setCycleCount(0);
+          next = "long";
+          notify("Odak tamamlandı 🍅", `Hak ettin — ${s.longMin} dk uzun mola.`);
+        } else {
+          setCycleCount(nextCycle);
+          next = "short";
+          notify("Odak tamamlandı 🍅", `${s.shortMin} dk kısa mola ver.`);
+        }
       } else {
-        setCycleCount(nextCycle);
-        next = "short";
-        notify("Odak tamamlandı 🍅", `${s.shortMin} dk kısa mola ver.`);
+        next = "focus";
+        notify("Mola bitti ☕", "Hadi tekrar odaklanalım.");
       }
-    } else {
-      next = "focus";
-      notify("Mola bitti ☕", "Hadi tekrar odaklanalım.");
-    }
 
-    setPhase(next);
-    setSecondsLeft(durationFor(next, s));
-    if (!s.autoStart) {
-      setIsRunning(false);
-    }
+      setPhase(next);
+      setSecondsLeft(durationFor(next, s));
+      if (!s.autoStart) {
+        setIsRunning(false);
+      }
+    }, 0);
+
+    return () => window.clearTimeout(finishTimer);
   }, [secondsLeft, isRunning, durationFor, persistToday]);
 
   // === Kullanıcı durmuşken süre, ayar değişiminde güncellensin ===
   useEffect(() => {
     if (isRunning || hasStarted) return;
-    setSecondsLeft(durationFor(phase, settings));
+    const syncTimer = window.setTimeout(() => {
+      setSecondsLeft(durationFor(phase, settings));
+    }, 0);
+    return () => window.clearTimeout(syncTimer);
   }, [settings, phase, isRunning, hasStarted, durationFor]);
 
   const handleStartPause = () => {

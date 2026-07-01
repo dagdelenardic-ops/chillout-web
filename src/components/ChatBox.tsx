@@ -28,6 +28,7 @@ import {
   isCompleteFirebaseConfig,
   parseFirebaseConfigInput,
 } from "@/lib/firebase";
+import { tellCat } from "@/lib/catEvents";
 
 type RoomDocKind = "chat" | "task" | "task_comment" | "task_complete";
 
@@ -74,6 +75,7 @@ type ChatBoxProps = {
 const GUEST_NAME_STORAGE_KEY = "chillout_guest_name_v1";
 const TASK_MAX_LENGTH = 220;
 const TASK_COMMENT_MAX_LENGTH = 180;
+const ROOM_WINDOW_HOURS = 48;
 
 function asString(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -364,7 +366,9 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
       return;
     }
 
-    const cutoffTimestamp = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
+    const cutoffTimestamp = Timestamp.fromMillis(
+      Date.now() - ROOM_WINDOW_HOURS * 60 * 60 * 1000
+    );
     const roomQuery = query(
       collection(db, "singleRoomMessages"),
       where("createdAt", ">=", cutoffTimestamp),
@@ -494,25 +498,6 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
     () => activeTasks.find((task) => isGoogleUser && task.uid === user?.uid),
     [activeTasks, isGoogleUser, user]
   );
-  const completedTasks = useMemo(
-    () => tasks.filter((task) => task.completed),
-    [tasks]
-  );
-
-  const stats = useMemo(() => {
-    const completed = tasks.filter((task) => task.completed);
-    const finishedByUsers = new Set(
-      completed.map((task) => task.completedByUid || task.uid)
-    );
-
-    return {
-      totalTasks: tasks.length,
-      completedTasks: completed.length,
-      completedUserCount: finishedByUsers.size,
-      activeTasks: tasks.length - completed.length,
-    };
-  }, [tasks]);
-
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [chatMessages.length, chatVisibleCount]);
@@ -712,6 +697,13 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         createdAt: serverTimestamp(),
       });
       setChatDraft("");
+      tellCat({
+        pool: [
+          "Sohbete yeni bir ses düştü.",
+          "Mesaj gitti, ben de okudum sayılır.",
+          "Güzel, oda biraz daha canlandı.",
+        ],
+      });
     } catch {
       setError("Sohbet mesajı gönderilemedi. Firestore izinlerini kontrol et.");
     }
@@ -742,6 +734,13 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         createdAt: serverTimestamp(),
       });
       setTaskDraft("");
+      tellCat({
+        pool: [
+          "Odak hedefi yazıldı, ben nöbetteyim.",
+          "Yeni iş başladı, masaya pati koydum.",
+          "Hedef net, şimdi ritim bulalım.",
+        ],
+      });
     } catch (reason) {
       const meta = extractErrorMeta(reason);
       setError(
@@ -846,6 +845,13 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         ...prev,
         [taskId]: "",
       }));
+      tellCat({
+        pool: [
+          "Yorum eklendi, ekip sesi güzel.",
+          "Kenar notu geldi.",
+          "Bir fikir daha masaya indi.",
+        ],
+      });
     } catch {
       setError("Yorum gönderilemedi. Firestore izinlerini kontrol et.");
     }
@@ -876,6 +882,13 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         uid: user.uid,
         displayName: getDisplayName(user),
         createdAt: serverTimestamp(),
+      });
+      tellCat({
+        pool: [
+          "İş bitti! Kuyrukla alkışlıyorum.",
+          "Tamamlandı işareti geldi, şahane.",
+          "Odak meyvesini verdi.",
+        ],
       });
     } catch {
       setError("İş tamamlandı olarak işaretlenemedi. Firestore izinlerini kontrol et.");
@@ -1244,7 +1257,7 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
         <>
           <h3>Genel Sohbet</h3>
           <p className="meta-line">
-            Son 24 saatin sohbeti gösterilir. Varsayılan görünüm: son 6 mesaj.
+            Son {ROOM_WINDOW_HOURS} saatin sohbeti gösterilir. Varsayılan görünüm: son 6 mesaj.
           </p>
 
           <div className="chat-list" role="log" aria-live="polite">
