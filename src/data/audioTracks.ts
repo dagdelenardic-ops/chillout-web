@@ -69,9 +69,3 @@ export function trackDisplayTitle(filePath: string): string {
   const filename = decodeURIComponent(raw);
   return TRACK_META[filename]?.title ?? filename.replace(/\.[^.]+$/, "");
 }
-
-export function trackCat(filePath: string): TrackCat {
-  const raw = filePath.split("/").pop() ?? filePath;
-  const filename = decodeURIComponent(raw);
-  return TRACK_META[filename]?.cat ?? "müzik";
-}

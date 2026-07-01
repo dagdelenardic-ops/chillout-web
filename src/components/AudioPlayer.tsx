@@ -1,6 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+// Tek deck: 🎵 Şarkı — play/pause, önceki/sonraki, ses, playlist.
+// Sahne/ortam sesiyle (rüzgar, yağmur vb.) aynı anda çalması için SceneMixer
+// (sol alt, "Sahne & Ses") ayrı ve bağımsız bir ses motoru kullanıyor.
+
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -13,507 +17,305 @@ import {
   Volume2,
   X,
 } from "lucide-react";
-import { AudioTrack, TrackCat, audioTracks, trackCat, trackDisplayTitle } from "@/data/audioTracks";
-
-function useClickOutside(ref: React.RefObject<HTMLElement | null>, onClickOutside: () => void) {
-  useEffect(() => {
-    function handleClick(event: MouseEvent) {
-      if (ref.current && !ref.current.contains(event.target as Node)) {
-        onClickOutside();
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [ref, onClickOutside]);
-}
-
-const AUDIO_STATE_KEY = "chillout_audio_state_v1";
-
-type StoredAudioState = {
-  enabled: boolean;
-  volume: number;
-  trackId: string;
-};
-
-const DEFAULT_AUDIO_STATE: StoredAudioState = {
-  enabled: true,
-  volume: 0.4,
-  trackId: audioTracks[0]?.id ?? "",
-};
-
-function pickRandomTrackId(
-  items: AudioTrack[],
-  options?: { excludeId?: string; failedIds?: Set<string> }
-): string | null {
-  const failedIds = options?.failedIds;
-  const excludeId = options?.excludeId;
-  let pool = items;
-
-  if (failedIds && failedIds.size > 0) {
-    const filtered = pool.filter((track) => !failedIds.has(track.id));
-    if (filtered.length > 0) pool = filtered;
-  }
-
-  if (excludeId && pool.length > 1) {
-    const filtered = pool.filter((track) => track.id !== excludeId);
-    if (filtered.length > 0) pool = filtered;
-  }
-
-  if (pool.length === 0) return null;
-
-  const randomIndex = Math.floor(Math.random() * pool.length);
-  return pool[randomIndex]?.id ?? null;
-}
+import { AudioTrack, audioTracks, trackDisplayTitle } from "@/data/audioTracks";
 
 function clampVolume(value: number): number {
   if (Number.isNaN(value)) return 0.4;
   return Math.max(0, Math.min(1, value));
 }
 
-function readStoredAudioState(): StoredAudioState {
-  if (typeof window === "undefined") return DEFAULT_AUDIO_STATE;
+function pickRandomId(items: AudioTrack[], excludeId?: string, failed?: Set<string>): string | null {
+  let pool = items;
+  if (failed && failed.size) {
+    const f = pool.filter((t) => !failed.has(t.id));
+    if (f.length) pool = f;
+  }
+  if (excludeId && pool.length > 1) {
+    const f = pool.filter((t) => t.id !== excludeId);
+    if (f.length) pool = f;
+  }
+  if (!pool.length) return null;
+  return pool[Math.floor(Math.random() * pool.length)]?.id ?? null;
+}
 
-  const raw = window.localStorage.getItem(AUDIO_STATE_KEY);
-  if (!raw) return DEFAULT_AUDIO_STATE;
+type StoredDeck = { enabled: boolean; volume: number; trackId: string };
 
+function readStored(key: string, fallbackVolume: number): StoredDeck {
+  if (typeof window === "undefined") return { enabled: false, volume: fallbackVolume, trackId: "" };
   try {
-    const parsed = JSON.parse(raw) as Partial<StoredAudioState>;
-    const trackId =
-      typeof parsed.trackId === "string" &&
-      audioTracks.some((track) => track.id === parsed.trackId)
-        ? parsed.trackId
-        : DEFAULT_AUDIO_STATE.trackId;
-
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return { enabled: false, volume: fallbackVolume, trackId: "" };
+    const p = JSON.parse(raw) as Partial<StoredDeck>;
     return {
-      enabled: true,
-      volume:
-        typeof parsed.volume === "number"
-          ? clampVolume(parsed.volume)
-          : DEFAULT_AUDIO_STATE.volume,
-      trackId,
+      enabled: Boolean(p.enabled),
+      volume: typeof p.volume === "number" ? clampVolume(p.volume) : fallbackVolume,
+      trackId: typeof p.trackId === "string" ? p.trackId : "",
     };
   } catch {
-    window.localStorage.removeItem(AUDIO_STATE_KEY);
-    return DEFAULT_AUDIO_STATE;
+    return { enabled: false, volume: fallbackVolume, trackId: "" };
   }
 }
 
-const CAT_LABELS: Record<TrackCat, string> = {
-  "müzik": "🎵 Müzik",
-  "ambiyans": "🌊 Ambiyans",
-  "8d": "🎧 8D",
+type Deck = {
+  tracks: AudioTrack[];
+  activeTrack: AudioTrack | undefined;
+  enabled: boolean;
+  volume: number;
+  error: string | null;
+  audioRef: React.RefObject<HTMLAudioElement | null>;
+  toggle: () => void;
+  next: () => void;
+  prev: () => void;
+  setVolume: (v: number) => void;
+  jumpTo: (id: string) => void;
+  onEnded: () => void;
+  onError: () => void;
 };
 
-const CAT_ORDER: TrackCat[] = ["müzik", "ambiyans", "8d"];
+function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean, fallbackVolume: number): Deck {
+  const tracks = allTracks;
 
-export function AudioPlayer() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const volumeRef = useRef<HTMLDivElement>(null);
-  const dockRef = useRef<HTMLElement>(null);
-  const failedTrackIdsRef = useRef<Set<string>>(new Set());
-  const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
-  const [enabled, setEnabled] = useState(() => readStoredAudioState().enabled);
-  const [volume, setVolume] = useState(() => readStoredAudioState().volume);
-  const [trackId, setTrackId] = useState(() => pickRandomTrackId(audioTracks) ?? "");
-  const [isPanelOpen, setIsPanelOpen] = useState(false);
-  const [isPlaylistOpen, setIsPlaylistOpen] = useState(false);
-  const [isVolumeOpen, setIsVolumeOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [awaitingUserGesture, setAwaitingUserGesture] = useState(false);
+  const failedRef = useRef<Set<string>>(new Set());
+  const initial = useRef(readStored(storageKey, fallbackVolume));
 
-  useClickOutside(volumeRef, () => setIsVolumeOpen(false));
-  useClickOutside(dockRef, () => {
-    setIsPlaylistOpen(false);
-    setIsVolumeOpen(false);
-  });
+  const [enabled, setEnabled] = useState(() => (autostart ? true : initial.current.enabled));
+  const [volume, setVolume] = useState(() => initial.current.volume);
+  const [trackId, setTrackId] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [awaiting, setAwaiting] = useState(false);
 
   const activeTrack = useMemo(
-    () => tracks.find((track) => track.id === trackId) ?? tracks[0],
-    [trackId, tracks]
-  );
-  const activeTrackIndex = useMemo(
-    () => Math.max(0, tracks.findIndex((track) => track.id === activeTrack?.id)),
-    [activeTrack, tracks]
+    () => tracks.find((t) => t.id === trackId) ?? tracks[0],
+    [tracks, trackId]
   );
 
-  /* Tracks grouped by category, for playlist rendering */
-  const groupedTracks = useMemo(() => {
-    const map: Record<TrackCat, AudioTrack[]> = { "müzik": [], "ambiyans": [], "8d": [] };
-    for (const t of tracks) {
-      const cat = trackCat(t.file);
-      map[cat].push(t);
-    }
-    return map;
+  // Parça listesi hazır olduğunda / değiştiğinde geçerli parçayı garanti et
+  useEffect(() => {
+    if (!tracks.length) return;
+    setTrackId((cur) => {
+      if (cur && tracks.some((t) => t.id === cur)) return cur;
+      const stored = initial.current.trackId;
+      if (stored && tracks.some((t) => t.id === stored)) return stored;
+      return pickRandomId(tracks) ?? tracks[0]?.id ?? "";
+    });
   }, [tracks]);
 
-  useEffect(() => {
-    let isMounted = true;
-
-    const loadTracks = async () => {
-      try {
-        const response = await fetch("/api/music", { cache: "no-store" });
-        if (!response.ok) return;
-        const data = (await response.json()) as { tracks?: string[] };
-        const paths = Array.isArray(data.tracks) ? data.tracks : [];
-        if (paths.length === 0 || !isMounted) return;
-
-        const nextTracks: AudioTrack[] = paths.map((filePath) => ({
-          id: filePath,
-          title: trackDisplayTitle(filePath),
-          file: filePath,
-        }));
-
-        failedTrackIdsRef.current.clear();
-        setTracks(nextTracks);
-        setTrackId(
-          pickRandomTrackId(nextTracks, { failedIds: failedTrackIdsRef.current }) ??
-          (nextTracks[0]?.id ?? "")
-        );
-      } catch {
-        // Keep fallback list when endpoint is unavailable.
-      }
-    };
-
-    loadTracks();
-    return () => { isMounted = false; };
-  }, []);
-
+  // Kalıcılık
   useEffect(() => {
     if (typeof window === "undefined") return;
+    window.localStorage.setItem(storageKey, JSON.stringify({ enabled, volume, trackId: activeTrack?.id ?? trackId }));
+  }, [enabled, volume, trackId, activeTrack, storageKey]);
 
-    const payload: StoredAudioState = {
-      enabled,
-      volume,
-      trackId: activeTrack?.id ?? trackId,
-    };
-    window.localStorage.setItem(AUDIO_STATE_KEY, JSON.stringify(payload));
-  }, [activeTrack, enabled, trackId, volume]);
-
+  // Kaynak + çalma
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !activeTrack) return;
-
     audio.loop = false;
-    audio.src = activeTrack.file;
-    audio.load();
-
-    if (enabled) {
-      audio
-        .play()
-        .then(() => {
-          setError(null);
-          setAwaitingUserGesture(false);
-        })
-        .catch((reason) => {
-          const code =
-            typeof (reason as { name?: unknown } | undefined)?.name === "string"
-              ? ((reason as { name: string }).name)
-              : "";
-
-          if (code === "NotAllowedError") {
-            setAwaitingUserGesture(true);
-            setError("Tarayıcı otomatik sesi engelledi. Ekrana bir kez dokununca müzik başlayacak.");
-            return;
-          }
-
-          if (code === "AbortError") return;
-
-          const currentTrackId = activeTrack.id;
-          failedTrackIdsRef.current.add(currentTrackId);
-
-          const nextTrackId =
-            pickRandomTrackId(tracks, {
-              excludeId: currentTrackId,
-              failedIds: failedTrackIdsRef.current,
-            }) ??
-            pickRandomTrackId(tracks, { failedIds: failedTrackIdsRef.current });
-
-          if (!nextTrackId) {
-            setEnabled(false);
-            setError("Müzik dosyaları açılamadı.");
-            return;
-          }
-
-          setError("Bir parça açılamadı, sonraki parçaya geçildi.");
-          setTrackId(nextTrackId);
-          setEnabled(true);
-        });
+    if (audio.src.split("/").pop() !== activeTrack.file.split("/").pop()) {
+      audio.src = activeTrack.file;
+      audio.load();
     }
+    if (!enabled) { audio.pause(); return; }
+    audio.play()
+      .then(() => { setError(null); setAwaiting(false); })
+      .catch((reason) => {
+        const code = typeof (reason as { name?: unknown })?.name === "string" ? (reason as { name: string }).name : "";
+        if (code === "NotAllowedError") { setAwaiting(true); return; }
+        if (code === "AbortError") return;
+        failedRef.current.add(activeTrack.id);
+        const nid = pickRandomId(tracks, activeTrack.id, failedRef.current);
+        if (nid) { setTrackId(nid); } else { setEnabled(false); setError("Parça açılamadı."); }
+      });
   }, [activeTrack, enabled, tracks]);
 
+  // Tarayıcı otomatik sesi engellediyse: ilk kullanıcı hareketinde başlat
   useEffect(() => {
-    if (!awaitingUserGesture || !enabled) return;
-
-    const tryResume = async () => {
+    if (!awaiting || !enabled) return;
+    const resume = async () => {
       const audio = audioRef.current;
       if (!audio) return;
-      try {
-        await audio.play();
-        setAwaitingUserGesture(false);
-        setError(null);
-      } catch {
-        // Keep waiting until a valid user gesture succeeds.
-      }
+      try { await audio.play(); setAwaiting(false); setError(null); } catch { /* bekle */ }
     };
-
-    const handler = () => { void tryResume(); };
-    window.addEventListener("pointerdown", handler, { once: true });
-    window.addEventListener("keydown", handler, { once: true });
-
-    return () => {
-      window.removeEventListener("pointerdown", handler);
-      window.removeEventListener("keydown", handler);
-    };
-  }, [awaitingUserGesture, enabled]);
+    const h = () => { void resume(); };
+    window.addEventListener("pointerdown", h, { once: true });
+    window.addEventListener("keydown", h, { once: true });
+    return () => { window.removeEventListener("pointerdown", h); window.removeEventListener("keydown", h); };
+  }, [awaiting, enabled]);
 
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
-    audio.volume = volume;
+    if (audio) audio.volume = volume;
   }, [volume]);
 
-  const goToTrackByOffset = (offset: number) => {
+  const goByOffset = useCallback((offset: number) => {
     if (tracks.length < 2) return;
-    const nextIndex = (activeTrackIndex + offset + tracks.length) % tracks.length;
-    const nextTrack = tracks[nextIndex];
-    if (nextTrack) setTrackId(nextTrack.id);
-  };
+    const idx = Math.max(0, tracks.findIndex((t) => t.id === activeTrack?.id));
+    const nextIdx = (idx + offset + tracks.length) % tracks.length;
+    const nt = tracks[nextIdx];
+    if (nt) { setTrackId(nt.id); setEnabled(true); }
+  }, [tracks, activeTrack]);
 
-  const pickNextPlayableTrackId = (excludeTrackId?: string): string | null =>
-    pickRandomTrackId(tracks, {
-      excludeId: excludeTrackId,
-      failedIds: failedTrackIdsRef.current,
-    });
-
-  const handleTrackEnded = () => {
-    const currentTrackId = activeTrack?.id;
-    if (!currentTrackId) return;
-
-    const nextTrackId =
-      pickNextPlayableTrackId(currentTrackId) ?? pickNextPlayableTrackId();
-
-    if (!nextTrackId) {
-      setError("Çalınabilir parça kalmadı.");
-      setEnabled(false);
-      return;
-    }
-
-    if (nextTrackId === currentTrackId) {
-      const audio = audioRef.current;
-      if (!audio || !enabled) return;
-      audio.currentTime = 0;
-      audio.play()
-        .then(() => setError(null))
-        .catch(() => {
-          setAwaitingUserGesture(true);
-          setError("Tarayıcı otomatik sesi engelledi.");
-        });
-      return;
-    }
-
-    setTrackId(nextTrackId);
-  };
-
-  const handleTrackError = () => {
-    const currentTrackId = activeTrack?.id;
-    if (currentTrackId) failedTrackIdsRef.current.add(currentTrackId);
-
-    const nextTrackId =
-      pickNextPlayableTrackId(currentTrackId) ?? pickNextPlayableTrackId();
-
-    if (!nextTrackId) {
-      setError("Müzik dosyaları açılamadı.");
-      setEnabled(false);
-      return;
-    }
-
-    setError("Bir parça açılamadı, sonraki parçaya geçildi.");
-    setTrackId(nextTrackId);
-    setEnabled(true);
-  };
-
-  const handleToggle = async () => {
+  const toggle = useCallback(() => {
     const audio = audioRef.current;
     if (!audio || !activeTrack) return;
+    if (enabled) { audio.pause(); setEnabled(false); return; }
+    setError(null);
+    audio.play().then(() => setEnabled(true)).catch(() => { setEnabled(true); setAwaiting(true); });
+  }, [enabled, activeTrack]);
 
-    if (enabled) {
-      audio.pause();
-      setEnabled(false);
+  const onEnded = useCallback(() => {
+    const cur = activeTrack?.id;
+    const nid = pickRandomId(tracks, cur, failedRef.current) ?? cur ?? null;
+    if (!nid) { setEnabled(false); return; }
+    if (nid === cur) {
+      const audio = audioRef.current;
+      if (audio && enabled) { audio.currentTime = 0; void audio.play().catch(() => setAwaiting(true)); }
       return;
     }
+    setTrackId(nid);
+  }, [tracks, activeTrack, enabled]);
 
-    try {
-      setError(null);
-      await audio.play();
-      setEnabled(true);
-    } catch {
-      setError("Tarayıcı müziği blokladı. Butona tekrar tıklayarak izin ver.");
-    }
+  const onError = useCallback(() => {
+    if (activeTrack?.id) failedRef.current.add(activeTrack.id);
+    const nid = pickRandomId(tracks, activeTrack?.id, failedRef.current);
+    if (nid) { setTrackId(nid); setEnabled(true); } else { setEnabled(false); setError("Ses dosyaları açılamadı."); }
+  }, [tracks, activeTrack]);
+
+  return {
+    tracks, activeTrack, enabled, volume, error, audioRef,
+    toggle,
+    next: () => goByOffset(1),
+    prev: () => goByOffset(-1),
+    setVolume: (v: number) => setVolume(clampVolume(v)),
+    jumpTo: (id: string) => { setTrackId(id); setEnabled(true); },
+    onEnded, onError,
   };
+}
 
-  const jumpToTrack = (id: string) => {
-    setTrackId(id);
-    setEnabled(true);
-  };
+function DeckControls({ deck, title, emoji }: { deck: Deck; title: string; emoji: string }) {
+  const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [volumeOpen, setVolumeOpen] = useState(false);
+  const nowPlaying = deck.activeTrack ? trackDisplayTitle(deck.activeTrack.file) : "—";
 
-  const nowPlayingTitle = activeTrack
-    ? trackDisplayTitle(activeTrack.file)
-    : "—";
+  return (
+    <div className={`deck ${deck.enabled ? "playing" : ""}`}>
+      <div className="deck-head">
+        <span className="deck-title">{emoji} {title}</span>
+        <span className="deck-now" title={nowPlaying}>{nowPlaying}</span>
+        {deck.enabled && <span className="deck-live" aria-label="çalıyor">●</span>}
+      </div>
+
+      <div className="audio-controls-row" role="group" aria-label={`${title} kontrolleri`}>
+        <button type="button" className="audio-icon-btn" aria-label="Önceki" onClick={deck.prev}><SkipBack aria-hidden="true" /></button>
+        <button type="button" className="audio-icon-btn audio-icon-main" aria-label={deck.enabled ? "Durdur" : "Çal"} onClick={deck.toggle}>
+          {deck.enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
+        </button>
+        <button type="button" className="audio-icon-btn" aria-label="Sonraki" onClick={deck.next}><SkipForward aria-hidden="true" /></button>
+
+        <div className="audio-volume-wrap">
+          <button type="button" className={`audio-icon-btn${volumeOpen ? " active" : ""}`} aria-label="Ses" aria-expanded={volumeOpen} onClick={() => setVolumeOpen((p) => !p)}>
+            <Volume2 aria-hidden="true" />
+          </button>
+          {volumeOpen && (
+            <div className="audio-volume-popup">
+              <input
+                className="audio-intensity-slider" type="range" min={0} max={1} step={0.01}
+                value={deck.volume} aria-label={`${title} ses seviyesi`}
+                onChange={(e) => deck.setVolume(Number(e.target.value))}
+                onMouseUp={() => setVolumeOpen(false)} onTouchEnd={() => setVolumeOpen(false)}
+              />
+            </div>
+          )}
+        </div>
+
+        <button type="button" className={`audio-icon-btn${playlistOpen ? " active" : ""}`} aria-label={playlistOpen ? "Listeyi kapat" : "Listeyi aç"} aria-expanded={playlistOpen} onClick={() => setPlaylistOpen((p) => !p)}>
+          <ListMusic aria-hidden="true" />
+        </button>
+      </div>
+
+      {deck.error && <p className="error-text">{deck.error}</p>}
+
+      {playlistOpen && (
+        <div className="audio-playlist">
+          <div className="audio-playlist-header">
+            <span>{title} — {deck.tracks.length} parça</span>
+            <button type="button" className="audio-playlist-close" aria-label="Kapat" onClick={() => setPlaylistOpen(false)}><X size={14} /></button>
+          </div>
+          <div className="audio-playlist-body">
+            {deck.tracks.map((t) => (
+              <button
+                key={t.id} type="button"
+                className={`audio-playlist-item${t.id === deck.activeTrack?.id ? " active" : ""}`}
+                onClick={() => deck.jumpTo(t.id)} title={trackDisplayTitle(t.file)}
+              >
+                {t.id === deck.activeTrack?.id && <span className="audio-playlist-eq" aria-hidden="true">{deck.enabled ? "▶" : "⏸"}</span>}
+                <span className="audio-playlist-name">{trackDisplayTitle(t.file)}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function AudioPlayer() {
+  const dockRef = useRef<HTMLElement>(null);
+  const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  const song = useDeck(tracks, "chillout_song_state_v1", true, 0.42);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const res = await fetch("/api/music", { cache: "no-store" });
+        if (!res.ok) return;
+        const data = (await res.json()) as { tracks?: string[] };
+        const paths = Array.isArray(data.tracks) ? data.tracks : [];
+        if (!paths.length || !mounted) return;
+        setTracks(paths.map((p) => ({ id: p, title: trackDisplayTitle(p), file: p })));
+      } catch { /* fallback listesi kalır */ }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  const summary = isPanelOpen ? (song.enabled ? "Şarkı" : "Duraklatıldı") : "Müzik";
 
   return (
     <aside className="audio-dock" ref={dockRef} aria-label="Müzik oynatıcı">
-      {/* Toggle button */}
       <button
         type="button"
-        className="audio-panel-toggle"
+        className={`audio-panel-toggle${song.enabled ? " live" : ""}`}
         aria-expanded={isPanelOpen}
-        onClick={() => {
-          setIsPanelOpen((prev) => !prev);
-          if (isPanelOpen) setIsPlaylistOpen(false);
-        }}
+        onClick={() => setIsPanelOpen((p) => !p)}
       >
         <Music2 aria-hidden="true" />
-        <span className="audio-toggle-label">
-          {isPanelOpen ? nowPlayingTitle : "Müzik"}
-        </span>
+        <span className="audio-toggle-label">{summary}</span>
         {isPanelOpen ? <ChevronDown aria-hidden="true" /> : <ChevronUp aria-hidden="true" />}
       </button>
 
       {isPanelOpen && (
         <article className="audio-dock-card">
-          {/* Now Playing */}
-          <div className="audio-now-playing">
-            <span className="audio-now-playing-label">Şu An</span>
-            <span className="audio-now-playing-title">{nowPlayingTitle}</span>
-          </div>
-
-          {/* Controls row */}
-          <div className="audio-controls-row" role="group" aria-label="Müzik kontrolleri">
-            <button
-              type="button"
-              className="audio-icon-btn"
-              aria-label="Önceki parça"
-              onClick={() => goToTrackByOffset(-1)}
-            >
-              <SkipBack aria-hidden="true" />
-            </button>
-
-            <button
-              type="button"
-              className="audio-icon-btn audio-icon-main"
-              aria-label={enabled ? "Durdur" : "Çal"}
-              onClick={handleToggle}
-            >
-              {enabled ? <Pause aria-hidden="true" /> : <Play aria-hidden="true" />}
-            </button>
-
-            <button
-              type="button"
-              className="audio-icon-btn"
-              aria-label="Sonraki parça"
-              onClick={() => goToTrackByOffset(1)}
-            >
-              <SkipForward aria-hidden="true" />
-            </button>
-
-            {/* Volume */}
-            <div ref={volumeRef} className="audio-volume-wrap">
-              <button
-                type="button"
-                className={`audio-icon-btn${isVolumeOpen ? " active" : ""}`}
-                aria-expanded={isVolumeOpen}
-                aria-label="Ses"
-                onClick={() => setIsVolumeOpen((prev) => !prev)}
-              >
-                <Volume2 aria-hidden="true" />
-              </button>
-              {isVolumeOpen && (
-                <div className="audio-volume-popup">
-                  <label className="audio-intensity" htmlFor="audio-volume-slider">
-                    <span className="sr-only">Ses seviyesi</span>
-                    <input
-                      id="audio-volume-slider"
-                      className="audio-intensity-slider"
-                      type="range"
-                      min={0}
-                      max={1}
-                      step={0.01}
-                      value={volume}
-                      onChange={(e) => setVolume(clampVolume(Number(e.target.value)))}
-                      onMouseUp={() => setIsVolumeOpen(false)}
-                      onTouchEnd={() => setIsVolumeOpen(false)}
-                    />
-                  </label>
-                </div>
-              )}
-            </div>
-
-            {/* Playlist toggle */}
-            <button
-              type="button"
-              className={`audio-icon-btn${isPlaylistOpen ? " active" : ""}`}
-              aria-expanded={isPlaylistOpen}
-              aria-label={isPlaylistOpen ? "Playlist'i kapat" : "Playlist'i aç"}
-              onClick={() => setIsPlaylistOpen((prev) => !prev)}
-            >
-              <ListMusic aria-hidden="true" />
-            </button>
-          </div>
-
-          {error && <p className="error-text">{error}</p>}
-
-          {/* Collapsible Playlist */}
-          {isPlaylistOpen && (
-            <div className="audio-playlist">
-              <div className="audio-playlist-header">
-                <span>Playlist — {tracks.length} parça</span>
-                <button
-                  type="button"
-                  className="audio-playlist-close"
-                  aria-label="Playlist'i kapat"
-                  onClick={() => setIsPlaylistOpen(false)}
-                >
-                  <X size={14} />
-                </button>
-              </div>
-              <div className="audio-playlist-body">
-                {CAT_ORDER.map((cat) => {
-                  const group = groupedTracks[cat];
-                  if (!group || group.length === 0) return null;
-                  return (
-                    <div key={cat} className="audio-playlist-section">
-                      <div className="audio-playlist-cat">{CAT_LABELS[cat]}</div>
-                      {group.map((t) => (
-                        <button
-                          key={t.id}
-                          type="button"
-                          className={`audio-playlist-item${t.id === activeTrack?.id ? " active" : ""}`}
-                          onClick={() => jumpToTrack(t.id)}
-                          title={trackDisplayTitle(t.file)}
-                        >
-                          {t.id === activeTrack?.id && (
-                            <span className="audio-playlist-eq" aria-hidden="true">
-                              {enabled ? "▶" : "⏸"}
-                            </span>
-                          )}
-                          <span className="audio-playlist-name">{trackDisplayTitle(t.file)}</span>
-                        </button>
-                      ))}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+          <DeckControls deck={song} title="Şarkı" emoji="🎵" />
         </article>
       )}
 
-      <audio
-        ref={audioRef}
-        preload="none"
-        onEnded={handleTrackEnded}
-        onError={handleTrackError}
-      />
+      <audio ref={song.audioRef} preload="none" onEnded={song.onEnded} onError={song.onError} />
+
+      <style jsx>{`
+        .deck { display: grid; gap: 8px; }
+        .deck-head { display: flex; align-items: center; gap: 8px; }
+        .deck-title { font-weight: 700; font-size: 0.82rem; color: #f2fbf7; white-space: nowrap; }
+        .deck-now {
+          flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+          font-size: 0.76rem; color: #9fc4ba; text-align: right;
+        }
+        .deck-live { color: #7ee0b8; font-size: 0.6rem; animation: deck-pulse 1.6s ease-in-out infinite; }
+        @keyframes deck-pulse { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
+      `}</style>
     </aside>
   );
 }
