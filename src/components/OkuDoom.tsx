@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback, useId } from "react";
 import { Heart, X as XIcon, ArrowUp, Bookmark, Filter, RotateCcw } from "lucide-react";
 import { okuStories, okuCategories, type OkuStory } from "@/data/okuDoomStories";
 import okuHeroImageIds from "@/data/okuHeroImages.json";
@@ -25,7 +25,7 @@ function toneBase(hue: number, tone: string) {
 // Hero with layered grain + vignette (no AI image needed)
 function StoryHero({ story, blur = 0 }: { story: OkuStory; blur?: number }) {
   const { hue, tone } = story.hero;
-  const id = useMemo(() => `grain-${Math.random().toString(36).slice(2, 7)}`, []);
+  const id = `grain-${useId().replace(/:/g, "")}`;
   const hasPhoto = HERO_IMAGE_SET.has(story.id);
   return (
     <div
@@ -146,10 +146,13 @@ export function OkuDoom() {
 
   // Load saved
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setSavedIds(JSON.parse(raw));
-    } catch { /* ignore */ }
+    const loadTimer = window.setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) setSavedIds(JSON.parse(raw));
+      } catch { /* ignore */ }
+    }, 0);
+    return () => window.clearTimeout(loadTimer);
   }, []);
 
   const saveSaved = useCallback((ids: string[]) => {
@@ -165,7 +168,10 @@ export function OkuDoom() {
   const current = stories[idx % stories.length];
 
   // Reset idx if filter changes
-  useEffect(() => { setIdx(0); }, [filter]);
+  useEffect(() => {
+    const resetTimer = window.setTimeout(() => setIdx(0), 0);
+    return () => window.clearTimeout(resetTimer);
+  }, [filter]);
 
   const advance = useCallback(() => {
     setIdx((i) => (i + 1) % stories.length);

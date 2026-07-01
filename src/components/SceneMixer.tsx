@@ -81,11 +81,14 @@ export function SceneMixer() {
 
   // İlk yüklemede kayıtlı durumu oku (ses motoru başlatmadan — perde görseli yine de gelir)
   useEffect(() => {
-    const stored = readStored();
-    setSceneId(stored.sceneId);
-    setMaster(stored.master);
-    setLayers(stored.layers);
-    hydrated.current = true;
+    const hydrateTimer = window.setTimeout(() => {
+      const stored = readStored();
+      setSceneId(stored.sceneId);
+      setMaster(stored.master);
+      setLayers(stored.layers);
+      hydrated.current = true;
+    }, 0);
+    return () => window.clearTimeout(hydrateTimer);
   }, []);
 
   // Durumu kalıcı kıl

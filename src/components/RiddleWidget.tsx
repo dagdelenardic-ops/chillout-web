@@ -22,7 +22,8 @@ export function RiddleWidget() {
   };
 
   useEffect(() => {
-    setRiddle(pickRiddle());
+    const riddleTimer = window.setTimeout(() => setRiddle(pickRiddle()), 0);
+    return () => window.clearTimeout(riddleTimer);
   }, []);
 
   return (
