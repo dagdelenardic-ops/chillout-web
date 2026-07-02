@@ -29,6 +29,8 @@ import {
   parseFirebaseConfigInput,
 } from "@/lib/firebase";
 import { tellCat } from "@/lib/catEvents";
+import { summarizeFocusRoom } from "@/lib/focusRoom";
+import { FocusRoomPulse } from "@/components/FocusRoomPulse";
 
 type RoomDocKind = "chat" | "task" | "task_comment" | "task_complete";
 
@@ -497,6 +499,10 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   const myActiveTask = useMemo(
     () => activeTasks.find((task) => isGoogleUser && task.uid === user?.uid),
     [activeTasks, isGoogleUser, user]
+  );
+  const focusRoomSummary = useMemo(
+    () => summarizeFocusRoom(roomDocs, user?.uid ?? null),
+    [roomDocs, user?.uid]
   );
   useEffect(() => {
     endRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1044,6 +1050,8 @@ export function ChatBox({ mode = "all" }: ChatBoxProps) {
   return (
     <article className="soft-card chat-shell">
       <h2>{cardTitle}</h2>
+
+      {showTasks ? <FocusRoomPulse summary={focusRoomSummary} signedIn={isGoogleUser} /> : null}
 
       {showAuthControls ? <p>{statusText}</p> : null}
 

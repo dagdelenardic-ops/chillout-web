@@ -14,12 +14,15 @@ const COLLECTION = "userPrefs";
 // Senkronlanacak anahtarlar. Sayısal/birikimli olanlar özel birleştirilir.
 const SYNC_KEYS = [
   "chillout_audio_state_v1",
+  "chillout_song_state_v1",
   "chillout_scene_state_v1",
   "chillout_focus_log_v1",
   "pomodoro-settings-v2",
   "pomodoro-stats-v2",
   "chillout-cat-v2",
+  "chillout-cat3d-v2",
   "chillout-oku-saved",
+  "chillout_discovery_passport_v1",
   "snake_doner_best_score_v1",
   "chillout_guest_name_v1",
 ] as const;

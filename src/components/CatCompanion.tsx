@@ -15,6 +15,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CAT_REACTION_EVENT, type CatReactionDetail } from "@/lib/catEvents";
 import { FOCUS_COMPLETE_EVENT, type FocusSummary } from "@/lib/focusStats";
+import { RITUAL_START_EVENT, type RitualStartDetail } from "@/lib/ritualEvents";
 
 const COLS = 6;
 const ROWS = 6;
@@ -29,6 +30,8 @@ const JUMP_DUR  = 1100; // ms — yerinde zıplama süresi
 const LEAP_DUR  = 620;  // ms — sekmeye sıçrama yayı süresi
 const GLIDE_SPD = 96;   // px/s — kanat açık süzülerek iniş hızı (yavaş)
 const TAB_NAV_ID = "cat-tab-nav";
+const FOLLOW_DUR = 18_000;
+const LASER_HOPS = 5;
 
 const NAMES = ["Pamuk", "Tekir", "Boncuk", "Zeytin", "Duman", "Şanslı", "Badem", "Mırnav"];
 const PURRS = ["mırr~", "mırnav 🐾", "🥰", "daha!", "keyifli~", "prr…", "😻", "mutluyum"];
@@ -87,13 +90,14 @@ type Mode =
   | "wait" | "enter" | "dwell" | "stroll"
   | "groom" | "stretch" | "loaf" | "zoomies"
   | "tabrise" | "tabtouch" | "tabfall"
-  | "gofood" | "eat" | "angry";
+  | "gofood" | "eat" | "angry" | "laser";
 type Heart = { id: number; dx: number; kind: "love" | "anger" };
 type Mimic = "look-up" | "look-down" | "look-back" | "look-front" | "ear-flick" | "blink";
 
 type NeedKey = "hunger" | "energy" | "fun" | "hygiene" | "affection";
 type Needs = Record<NeedKey, number>;
 type Mood = "happy" | "content" | "needy" | "angry";
+type CareRequest = "food" | "play" | "brush" | "sleep" | "call" | "laser";
 
 const NEED_META: { key: NeedKey; label: string; icon: string; color: string }[] = [
   { key: "hunger",    label: "Açlık",   icon: "🍽️", color: "#ffb454" },
@@ -110,6 +114,9 @@ const MIMICS: Mimic[] = ["look-up", "look-down", "look-back", "look-front", "ear
 
 function clamp100(v: number) { return Math.max(0, Math.min(100, v)); }
 function avgNeeds(n: Needs) { return (n.hunger + n.energy + n.fun + n.hygiene + n.affection) / 5; }
+function pickOne<T>(items: T[]): T {
+  return items[Math.floor(Math.random() * items.length)] ?? items[0];
+}
 
 export function CatCompanion({ activeTab }: { activeTab?: string }) {
   const [x,       setX]       = useState(-MARGIN);
@@ -122,6 +129,8 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
   const [bubble,  setBubble]  = useState<string | null>(null);
   const [mimic,   setMimic]   = useState<Mimic | null>(null);
   const [bowlX,   setBowlX]   = useState<number | null>(null);
+  const [laserX,  setLaserX]  = useState<number | null>(null);
+  const [followActive, setFollowActive] = useState(false);
 
   // Bakım paneli için düzenli snapshot
   const [snap, setSnap] = useState<{ needs: Needs; anger: number; mood: Mood; name: string }>({
@@ -138,6 +147,7 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
   const boxRef = useRef<HTMLDivElement | null>(null);
   const petStamps = useRef<number[]>([]);   // hızlı-tıklama tespiti
   const scrollStamp = useRef(0);
+  const followTimerRef = useRef<number | null>(null);
 
   const viewRef     = useRef<{ state: State; mode: Mode }>({ state: "run", mode: "wait" });
   const activeTabRef = useRef<string | undefined>(activeTab);
@@ -164,12 +174,17 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
     fallDrift: 0,
     // yeme
     foodX: 0,
+    // oyuncak / takip
+    laserX: 0,
+    laserHops: 0,
+    followUntil: 0,
+    followX: 0,
     // sanal bebek
     needs: { hunger: 80, energy: 80, fun: 80, hygiene: 80, affection: 80 } as Needs,
     anger: 0,
     angryUntil: 0,        // öfke tepkisinin bitiş zamanı
     mood: "content" as Mood,
-    request: null as null | "food" | "play" | "brush" | "sleep",
+    request: null as null | CareRequest,
     lastCareTick: 0,
   });
   const reduceRef = useRef(false);
@@ -295,7 +310,7 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
   }, [pet]);
 
   // ── Bakım eylemleri ──
-  const requestCare = useCallback((kind: "food" | "play" | "brush" | "sleep") => {
+  const requestCare = useCallback((kind: CareRequest) => {
     const c = ctrl.current;
     c.request = kind;
     // öfkeliyken bakım da yumuşatır
@@ -306,7 +321,85 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
       c.foodX = fx;
       setBowlX(fx);
     }
+    if (kind === "laser") {
+      const vw = window.innerWidth || 1280;
+      const lx = Math.round(Math.max(24, Math.min(vw - 24, vw * (0.16 + Math.random() * 0.68))));
+      c.laserX = lx;
+      c.laserHops = LASER_HOPS;
+      setLaserX(lx);
+    }
   }, [bowlX]);
+
+  const callCat = useCallback(() => {
+    requestCare("call");
+    showReaction(pickOne(["Geliyorum.", "Çağırdın, geldim.", "Tamam, yanına kayıyorum."]), 1800);
+  }, [requestCare, showReaction]);
+
+  const startFollow = useCallback(() => {
+    const c = ctrl.current;
+    const vw = window.innerWidth || 1280;
+    c.followUntil = performance.now() + FOLLOW_DUR;
+    c.followX = Math.max(0, Math.min(vw, c.x + W / 2));
+    c.needs.fun = clamp100(c.needs.fun + 8);
+    setFollowActive(true);
+    if (followTimerRef.current) window.clearTimeout(followTimerRef.current);
+    followTimerRef.current = window.setTimeout(() => {
+      setFollowActive(false);
+      followTimerRef.current = null;
+    }, FOLLOW_DUR);
+    showReaction(pickOne(["Tamam, imlecini takipteyim.", "Nereye gidersen oraya.", "Takip modu: kuyruk radar açık."]), 2400);
+    setSnap((s) => ({ ...s, needs: { ...c.needs } }));
+    persist();
+  }, [persist, showReaction]);
+
+  const askCat = useCallback(() => {
+    const c = ctrl.current;
+    const lowNeed = (Object.keys(c.needs) as NeedKey[])
+      .filter((k) => c.needs[k] < 34)
+      .sort((a, b) => c.needs[a] - c.needs[b])[0];
+    const tab = activeTabRef.current;
+    const pool =
+      c.mood === "angry"
+        ? ANGRY_LINES
+        : lowNeed
+          ? NEED_LINES[lowNeed]
+          : [...SITE_COMMENTS, ...((tab && TAB_COMMENTS[tab]) || [])];
+    showReaction(pickOne(pool), 3200);
+    c.needs.affection = clamp100(c.needs.affection + 4);
+    setSnap((s) => ({ ...s, needs: { ...c.needs } }));
+    persist();
+  }, [persist, showReaction]);
+
+  const calmCat = useCallback(() => {
+    const c = ctrl.current;
+    c.anger = clamp100(c.anger - 34);
+    c.angryUntil = 0;
+    c.petUntil = performance.now() + 1200;
+    c.needs.affection = clamp100(c.needs.affection + 16);
+    spawnHearts("love");
+    showReaction(pickOne(CALMING_LINES), 2200);
+    setSnap((s) => ({ ...s, needs: { ...c.needs }, anger: c.anger, mood: c.mood === "angry" ? "content" : c.mood }));
+    persist();
+  }, [persist, showReaction, spawnHearts]);
+
+  const renameCat = useCallback(() => {
+    const next = pickOne(NAMES.filter((name) => name !== nameRef.current));
+    nameRef.current = next;
+    affRef.current = Math.max(affRef.current, 1);
+    showReaction(`${next} olsun o zaman.`, 2200);
+    setSnap((s) => ({ ...s, name: next }));
+    persist();
+  }, [persist, showReaction]);
+
+  useEffect(() => {
+    const onPointerMove = (event: PointerEvent) => {
+      const c = ctrl.current;
+      if (c.followUntil <= performance.now()) return;
+      c.followX = event.clientX;
+    };
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    return () => window.removeEventListener("pointermove", onPointerMove);
+  }, []);
 
   // ── Sanal bebek döngüsü (1sn): ihtiyaç azalması + öfke + mood + snapshot ──
   useEffect(() => {
@@ -404,8 +497,87 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
       return Math.max(MARGIN, Math.min(vw() - MARGIN, nx));
     };
 
+    const pickLaserX = () => {
+      const lx = Math.round(rnd(28, Math.max(60, vw() - 28)));
+      c.laserX = lx;
+      setLaserX(lx);
+      return lx;
+    };
+
+    const handleRequest = (t: number) => {
+      const req = c.request;
+      if (!req) return false;
+      c.request = null;
+      c.jumpActive = false;
+      c.yOff = 0;
+
+      if (req !== "laser") setLaserX(null);
+
+      if (req === "food") {
+        c.targetX = c.foodX || pickStrollX();
+        c.dir = c.targetX >= c.x ? "right" : "left";
+        c.state = "run";
+        c.mode = "gofood";
+        return true;
+      }
+
+      if (req === "play") {
+        const info = getTabTarget();
+        if (Math.random() < 0.5 && info) {
+          c.tabTargetX = info.tabX;
+          c.tabTargetYOff = info.tabYOff;
+          c.dir = info.tabX >= c.x ? "right" : "left";
+          c.tabTakeoffX = Math.max(4, Math.min(vw() - W - 4, info.tabX - (c.dir === "right" ? 60 : -60)));
+          c.tabPhase = "walk";
+          c.mode = "tabrise";
+          return true;
+        }
+        c.zoomLeft = 2 + Math.floor(Math.random() * 2);
+        c.targetX = pickStrollX();
+        c.dir = c.targetX >= c.x ? "right" : "left";
+        c.state = "run";
+        c.mode = "zoomies";
+        return true;
+      }
+
+      if (req === "brush") {
+        c.mode = "groom";
+        c.state = "groom";
+        c.actionUntil = t + rnd(2600, 4200);
+        return true;
+      }
+
+      if (req === "sleep") {
+        c.mode = "loaf";
+        c.state = "sleep";
+        c.actionUntil = t + rnd(7000, 12000);
+        return true;
+      }
+
+      if (req === "call") {
+        c.targetX = Math.round(Math.max(4, Math.min(vw() - W - 4, vw() * 0.5 - W / 2)));
+        c.dir = c.targetX >= c.x ? "right" : "left";
+        c.state = "run";
+        c.mode = "stroll";
+        c.needs.affection = clamp100(c.needs.affection + 7);
+        return true;
+      }
+
+      c.laserHops = c.laserHops || LASER_HOPS;
+      c.targetX = c.laserX || pickLaserX();
+      c.dir = c.targetX >= c.x ? "right" : "left";
+      c.state = "run";
+      c.mode = "laser";
+      c.needs.fun = clamp100(c.needs.fun + 8);
+      return true;
+    };
+
     const startAngry = (t: number) => {
       c.mode = "angry"; c.state = "angry"; c.jumpActive = false; c.yOff = 0;
+      c.followUntil = 0;
+      c.laserHops = 0;
+      setFollowActive(false);
+      setLaserX(null);
       c.angryUntil = Math.max(c.angryUntil, t + rnd(2600, 4200));
       const line = ANGRY_LINES[Math.floor(Math.random() * ANGRY_LINES.length)];
       setBubble(line);
@@ -436,7 +608,31 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
       } else {
         if (c.state === "happy") { c.yOff = 0; goDwell(2500, 4500); }
 
-        switch (c.mode) {
+        const handledRequest = handleRequest(t);
+        const followLive =
+          !handledRequest &&
+          c.followUntil > t &&
+          c.mood !== "angry" &&
+          c.mode !== "tabrise" &&
+          c.mode !== "tabtouch" &&
+          c.mode !== "tabfall" &&
+          c.mode !== "laser";
+
+        if (followLive) {
+          const targetX = Math.max(4, Math.min(vw() - W - 4, c.followX - W / 2));
+          const dx = targetX - c.x;
+          c.mode = "stroll";
+          c.dir = dx >= 0 ? "right" : "left";
+          if (Math.abs(dx) > 5) {
+            c.x += Math.sign(dx) * ZOOM_SPEED * 0.72 * dt;
+            c.state = "run";
+          } else {
+            c.x = targetX;
+            c.state = "idle";
+            c.dwellUntil = t + 180;
+          }
+          c.needs.fun = clamp100(c.needs.fun + 1.1);
+        } else switch (c.mode) {
           case "wait":
           case "enter": {
             c.mode = "enter";
@@ -473,28 +669,6 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
             }
 
             c.state = "idle";
-
-            // Kullanıcı istekleri (bakım paneli) — hemen ele al
-            if (c.request) {
-              const req = c.request; c.request = null;
-              if (req === "food") {
-                c.targetX = c.foodX; c.dir = c.foodX >= c.x ? "right" : "left";
-                c.state = "run"; c.mode = "gofood"; break;
-              }
-              if (req === "play") {
-                if (Math.random() < 0.5 && getTabTarget()) {
-                  const info = getTabTarget()!;
-                  c.tabTargetX = info.tabX; c.tabTargetYOff = info.tabYOff;
-                  c.dir = info.tabX >= c.x ? "right" : "left";
-                  c.tabTakeoffX = Math.max(4, Math.min(vw() - W - 4, info.tabX - (c.dir === "right" ? 60 : -60)));
-                  c.tabPhase = "walk"; c.mode = "tabrise"; break;
-                }
-                c.zoomLeft = 2 + Math.floor(Math.random() * 2); c.targetX = pickStrollX();
-                c.dir = c.targetX >= c.x ? "right" : "left"; c.state = "run"; c.mode = "zoomies"; break;
-              }
-              if (req === "brush") { c.mode = "groom"; c.state = "groom"; c.actionUntil = t + rnd(2600, 4200); break; }
-              if (req === "sleep") { c.mode = "loaf"; c.state = "sleep"; c.actionUntil = t + rnd(6000, 11000); break; }
-            }
 
             // Scroll sırasında dinleniyorsa: yerinde sabit kal, yeni davranışa geçme
             if (recentlyScrolled) { c.dwellUntil = Math.max(c.dwellUntil, t + 500); break; }
@@ -574,6 +748,27 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
             // scroll dinleniyorsa uyandırma → süreyi uzat (yerinde sabit)
             if (recentlyScrolled) c.actionUntil = Math.max(c.actionUntil, t + 800);
             if (t >= c.actionUntil) { c.needs.energy = clamp100(c.needs.energy + 26); goDwell(2500, 5000); }
+            break;
+          }
+
+          // ── LAZER OYUNU ──
+          case "laser": {
+            const dx = c.laserX - c.x - W / 2;
+            c.dir = dx >= 0 ? "right" : "left";
+            c.state = Math.abs(dx) > 8 ? "run" : "crouch";
+            if (Math.abs(dx) > 8) {
+              c.x += Math.sign(dx) * ZOOM_SPEED * 0.95 * dt;
+            } else {
+              c.needs.fun = clamp100(c.needs.fun + 14);
+              c.laserHops -= 1;
+              if (c.laserHops <= 0) {
+                setLaserX(null);
+                showReaction(pickOne(["Yakaladım!", "Lazer bitti, av tamam.", "Bir tur daha sonra."]), 1800);
+                goDwell(2200, 4200);
+              } else {
+                c.laserX = pickLaserX();
+              }
+            }
             break;
           }
 
@@ -676,12 +871,15 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
     c.state = "idle"; c.mode = "dwell"; c.dwellUntil = Infinity;
     flush();
     return () => { mounted = false; if (raf) cancelAnimationFrame(raf); void started; };
-  }, [bowlX]);
+  }, [bowlX, showReaction]);
 
   useEffect(() => { viewRef.current = { state, mode }; }, [state, mode]);
   useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
 
-  useEffect(() => () => { if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current); }, []);
+  useEffect(() => () => {
+    if (reactionTimerRef.current) window.clearTimeout(reactionTimerRef.current);
+    if (followTimerRef.current) window.clearTimeout(followTimerRef.current);
+  }, []);
 
   // ── Dış olaylar (reaksiyon + odak tamamlanma) ──
   useEffect(() => {
@@ -706,11 +904,23 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
         "Harika iş. Şimdi mola hakkın var.",
       ]), 3600);
     };
+    const onRitualStart = (event: Event) => {
+      const detail = (event as CustomEvent<RitualStartDetail>).detail;
+      const title = detail?.ritual?.title;
+      if (!title) return;
+      showReaction(pick([
+        `${title} ritüeli açıldı. Ben modu tuttum.`,
+        `Ritüel başladı: ${title}. Dağılmak yasak, pati kanunu.`,
+        `${title} aktif. Ortamı ben sabitledim.`,
+      ]), 3400);
+    };
     window.addEventListener(CAT_REACTION_EVENT, onCatReaction);
     window.addEventListener(FOCUS_COMPLETE_EVENT, onFocusComplete);
+    window.addEventListener(RITUAL_START_EVENT, onRitualStart);
     return () => {
       window.removeEventListener(CAT_REACTION_EVENT, onCatReaction);
       window.removeEventListener(FOCUS_COMPLETE_EVENT, onFocusComplete);
+      window.removeEventListener(RITUAL_START_EVENT, onRitualStart);
     };
   }, [showReaction]);
 
@@ -776,6 +986,11 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
 
   return (
     <>
+      {/* Lazer noktası */}
+      {laserX !== null && (
+        <div className="cat3d-laser" style={{ left: laserX - 5 }} aria-hidden />
+      )}
+
       {/* Mama kabı */}
       {bowlX !== null && (
         <div className="cat3d-bowl" style={{ transform: `translateX(${bowlX + W / 2 - 13}px)` }} aria-hidden>🐟</div>
@@ -843,6 +1058,14 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
               <button type="button" onClick={() => requestCare("play")}>🧶 Oyna</button>
               <button type="button" onClick={() => requestCare("brush")}>🛁 Fırçala</button>
               <button type="button" onClick={() => requestCare("sleep")}>😴 Uyut</button>
+            </div>
+            <div className="catcare-command-actions">
+              <button type="button" onClick={callCat}>📍 Çağır</button>
+              <button type="button" className={followActive ? "active" : ""} onClick={startFollow}>👣 Takip</button>
+              <button type="button" className={laserX !== null ? "active" : ""} onClick={() => requestCare("laser")}>🔴 Lazer</button>
+              <button type="button" onClick={askCat}>💬 Konuş</button>
+              <button type="button" onClick={calmCat}>🤍 Sakinleş</button>
+              <button type="button" onClick={renameCat}>🏷️ Ad ver</button>
             </div>
             <p className="catcare-hint">Kediyi sevmek için boş bir yerdeyken üstüne tıkla. Çok sıkarsan sinirlenir!</p>
           </div>
@@ -987,6 +1210,17 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
           filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); animation: cat3d-bowlpop 0.3s ease-out;
         }
         @keyframes cat3d-bowlpop { from { opacity: 0; } to { opacity: 1; } }
+        .cat3d-laser {
+          position: fixed; left: 0; bottom: 56px; z-index: 58;
+          width: 10px; height: 10px; border-radius: 50%; pointer-events: none;
+          background: #ff315d;
+          box-shadow: 0 0 10px #ff315d, 0 0 22px rgba(255, 49, 93, 0.8);
+          animation: cat3d-laserpulse 0.55s ease-in-out infinite alternate;
+        }
+        @keyframes cat3d-laserpulse {
+          from { opacity: 0.55; transform: scale(0.78); }
+          to { opacity: 1; transform: scale(1.16); }
+        }
 
         @media (prefers-reduced-motion: reduce) {
           .cat3d-sprite, .cat3d-mimic { animation: none !important; }
@@ -1029,16 +1263,25 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
         .catcare-val { text-align: right; font-variant-numeric: tabular-nums; color: #9fc4ba; }
         .catcare-anger .catcare-need-lbl { color: #ff9c9c; }
         .catcare-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 2px; }
-        .catcare-actions > button {
+        .catcare-command-actions { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+        .catcare-actions > button, .catcare-command-actions > button {
+          min-height: 36px;
           padding: 9px 10px; border-radius: 11px; border: 1px solid rgba(182, 227, 216, 0.18);
           background: rgba(182, 227, 216, 0.06); color: #eaf5f1; cursor: pointer;
-          font-family: var(--font-sans, inherit); font-weight: 600; font-size: 0.82rem; transition: background 0.18s ease, border-color 0.18s ease;
+          font-family: var(--font-sans, inherit); font-weight: 600; font-size: 0.78rem; transition: background 0.18s ease, border-color 0.18s ease;
+          white-space: nowrap;
         }
-        .catcare-actions > button:hover { background: rgba(182, 227, 216, 0.14); border-color: rgba(182, 227, 216, 0.4); }
+        .catcare-actions > button:hover, .catcare-command-actions > button:hover { background: rgba(182, 227, 216, 0.14); border-color: rgba(182, 227, 216, 0.4); }
+        .catcare-command-actions > button.active {
+          border-color: rgba(255, 211, 115, 0.55);
+          background: rgba(255, 211, 115, 0.13);
+          color: #fff4d1;
+        }
         .catcare-hint { margin: 2px 0 0; font-size: 0.68rem; line-height: 1.4; color: #7f9c94; }
 
         @media (max-width: 640px) {
           .catcare-dock { bottom: max(64px, env(safe-area-inset-bottom)); }
+          .catcare-command-actions { grid-template-columns: 1fr 1fr; }
         }
       `}</style>
     </>

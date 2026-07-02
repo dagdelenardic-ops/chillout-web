@@ -13,9 +13,13 @@ import { ChatBox } from "@/components/ChatBox";
 import { FocusStats } from "@/components/FocusStats";
 import { PomodoroTimer } from "@/components/PomodoroTimer";
 import { WeeklyVisitorCount } from "@/components/WeeklyVisitorCount";
+import { RitualLauncher } from "@/components/RitualLauncher";
+import { DiscoveryPassportPanel } from "@/components/DiscoveryPassportPanel";
+import { CatCoachPanel } from "@/components/CatCoachPanel";
 import { discoverySites } from "@/data/discoverySites";
 import { turkishRiddles } from "@/data/turkishRiddles";
 import { tellCat } from "@/lib/catEvents";
+import { readDiscoveryPassport, recordDiscoveryVisit, setDiscoveryVote, writeDiscoveryPassport } from "@/lib/discoveryPassport";
 
 /* ===================================================================
    Anasayfa — reaktif "dinlenme · odak · keşif" paneli.
@@ -124,6 +128,7 @@ export default function Home() {
   const rootRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number | null>(null);
   const themeRef = useRef<HTMLDivElement | null>(null);
+  const lastPassportSiteRef = useRef<string | null>(null);
 
   const [theme, setTheme] = useState<ThemeSel>("auto");
   const [activeTab, setActiveTab] = useState<TabKey>("kesfet");
@@ -133,6 +138,7 @@ export default function Home() {
 
   const [siteIdx, setSiteIdx] = useState(0);
   const [siteVotes, setSiteVotes] = useState<Record<string, number>>({});
+  const [discoveryReady, setDiscoveryReady] = useState(false);
 
   const [riddleIdx, setRiddleIdx] = useState(0);
   const [riddleShown, setRiddleShown] = useState(false);
@@ -149,6 +155,7 @@ export default function Home() {
       setNow(new Date());
       setSiteIdx(Math.floor(Math.random() * discoverySites.length));
       setRiddleIdx(Math.floor(Math.random() * turkishRiddles.length));
+      setDiscoveryReady(true);
     }, 0);
     fetch(
       "https://api.open-meteo.com/v1/forecast?latitude=41.0082&longitude=28.9784&current=temperature_2m,weathercode&timezone=Europe/Istanbul"
@@ -304,6 +311,11 @@ export default function Home() {
 
   const site = discoverySites[siteIdx];
   const myVote = siteVotes[site.id] || 0;
+  useEffect(() => {
+    if (!discoveryReady || !site || lastPassportSiteRef.current === site.id) return;
+    lastPassportSiteRef.current = site.id;
+    writeDiscoveryPassport(recordDiscoveryVisit(readDiscoveryPassport(), { siteId: site.id, vibe: site.vibe }));
+  }, [discoveryReady, site]);
   const siteEntries = useMemo(
     () => discoverySites.map((s, idx) => ({ s, idx })),
     []
@@ -362,8 +374,10 @@ export default function Home() {
       ],
     });
   };
-  const vote = (val: number) => {
-    setSiteVotes((s) => ({ ...s, [site.id]: (s[site.id] || 0) === val ? 0 : val }));
+  const vote = (val: 1 | -1) => {
+    const nextVote = myVote === val ? 0 : val;
+    setSiteVotes((s) => ({ ...s, [site.id]: nextVote }));
+    writeDiscoveryPassport(setDiscoveryVote(readDiscoveryPassport(), site.id, site.vibe, nextVote));
     tellCat(
       val === 1
         ? { pool: ["Beğeni geldi, kuyruğum onayladı.", "Bunu favorilere yazalım mı?", "İyi seçim, burası ışıldıyor."] }
@@ -750,6 +764,9 @@ export default function Home() {
           </div>
         </div>
 
+        <RitualLauncher activeTab={activeTab} onActivateTab={activateTab} />
+        <CatCoachPanel activeTab={activeTab} onActivateTab={activateTab} />
+
         {/* ===== PANELLER ===== */}
         <section
           key={activeTab}
@@ -849,6 +866,7 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
+                  <DiscoveryPassportPanel currentSite={site} />
                 </aside>
               </div>
 

@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { getAmbientEngine, LAYERS, type LayerId } from "@/lib/ambient";
 import { SCENES, getScene, type SceneId } from "@/lib/scenes";
+import { RITUAL_APPLY_SCENE_EVENT } from "@/lib/ritualEvents";
 
 const SCENE_STATE_KEY = "chillout_scene_state_v1";
 
@@ -113,9 +114,9 @@ export function SceneMixer() {
     }
   };
 
-  const applyScene = async (scene: SceneId) => {
+  const applyScene = async (scene: SceneId, force = false) => {
     await wake();
-    if (sceneId === scene) {
+    if (!force && sceneId === scene) {
       // Aynı sahneye tekrar tıkla → kapat
       setSceneId(null);
       setLayers((prev) => {
@@ -170,6 +171,17 @@ export function SceneMixer() {
 
   const activeScene = sceneId ? getScene(sceneId) : null;
   const anyOn = LAYERS.some((meta) => layers[meta.id].on);
+
+  useEffect(() => {
+    const onApplyScene = (event: Event) => {
+      const detail = (event as CustomEvent<{ sceneId?: SceneId }>).detail;
+      if (!detail?.sceneId) return;
+      void applyScene(detail.sceneId, true);
+      setOpen(true);
+    };
+    window.addEventListener(RITUAL_APPLY_SCENE_EVENT, onApplyScene);
+    return () => window.removeEventListener(RITUAL_APPLY_SCENE_EVENT, onApplyScene);
+  });
 
   return (
     <>

@@ -4,7 +4,7 @@
 // Sahne/ortam sesiyle (rüzgar, yağmur vb.) aynı anda çalması için SceneMixer
 // (sol alt, "Sahne & Ses") ayrı ve bağımsız bir ses motoru kullanıyor.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import {
   ChevronDown,
   ChevronUp,
@@ -18,6 +18,8 @@ import {
   X,
 } from "lucide-react";
 import { AudioTrack, audioTracks, trackDisplayTitle } from "@/data/audioTracks";
+import { RITUAL_PICK_TRACK_EVENT } from "@/lib/ritualEvents";
+import { pickTrackForMood, type MusicMood } from "@/lib/musicMood";
 
 function clampVolume(value: number): number {
   if (Number.isNaN(value)) return 0.4;
@@ -62,25 +64,30 @@ type Deck = {
   enabled: boolean;
   volume: number;
   error: string | null;
-  audioRef: React.RefObject<HTMLAudioElement | null>;
   toggle: () => void;
   next: () => void;
   prev: () => void;
   setVolume: (v: number) => void;
   jumpTo: (id: string) => void;
+  pickMood: (mood: MusicMood, seed?: string) => void;
   onEnded: () => void;
   onError: () => void;
 };
 
-function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean, fallbackVolume: number): Deck {
+function useDeck(
+  allTracks: AudioTrack[],
+  storageKey: string,
+  autostart: boolean,
+  fallbackVolume: number,
+  audioRef: RefObject<HTMLAudioElement | null>
+): Deck {
   const tracks = allTracks;
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
   const failedRef = useRef<Set<string>>(new Set());
-  const initial = useRef(readStored(storageKey, fallbackVolume));
+  const [initial] = useState(() => readStored(storageKey, fallbackVolume));
 
-  const [enabled, setEnabled] = useState(() => (autostart ? true : initial.current.enabled));
-  const [volume, setVolume] = useState(() => initial.current.volume);
+  const [enabled, setEnabled] = useState(() => (autostart ? true : initial.enabled));
+  const [volume, setVolume] = useState(() => initial.volume);
   const [trackId, setTrackId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [awaiting, setAwaiting] = useState(false);
@@ -93,13 +100,16 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
   // Parça listesi hazır olduğunda / değiştiğinde geçerli parçayı garanti et
   useEffect(() => {
     if (!tracks.length) return;
-    setTrackId((cur) => {
-      if (cur && tracks.some((t) => t.id === cur)) return cur;
-      const stored = initial.current.trackId;
-      if (stored && tracks.some((t) => t.id === stored)) return stored;
-      return pickRandomId(tracks) ?? tracks[0]?.id ?? "";
-    });
-  }, [tracks]);
+    const syncTimer = window.setTimeout(() => {
+      setTrackId((cur) => {
+        if (cur && tracks.some((t) => t.id === cur)) return cur;
+        const stored = initial.trackId;
+        if (stored && tracks.some((t) => t.id === stored)) return stored;
+        return pickRandomId(tracks) ?? tracks[0]?.id ?? "";
+      });
+    }, 0);
+    return () => window.clearTimeout(syncTimer);
+  }, [tracks, initial.trackId]);
 
   // Kalıcılık
   useEffect(() => {
@@ -127,7 +137,7 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
         const nid = pickRandomId(tracks, activeTrack.id, failedRef.current);
         if (nid) { setTrackId(nid); } else { setEnabled(false); setError("Parça açılamadı."); }
       });
-  }, [activeTrack, enabled, tracks]);
+  }, [activeTrack, audioRef, enabled, tracks]);
 
   // Tarayıcı otomatik sesi engellediyse: ilk kullanıcı hareketinde başlat
   useEffect(() => {
@@ -141,12 +151,12 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
     window.addEventListener("pointerdown", h, { once: true });
     window.addEventListener("keydown", h, { once: true });
     return () => { window.removeEventListener("pointerdown", h); window.removeEventListener("keydown", h); };
-  }, [awaiting, enabled]);
+  }, [audioRef, awaiting, enabled]);
 
   useEffect(() => {
     const audio = audioRef.current;
     if (audio) audio.volume = volume;
-  }, [volume]);
+  }, [audioRef, volume]);
 
   const goByOffset = useCallback((offset: number) => {
     if (tracks.length < 2) return;
@@ -162,7 +172,7 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
     if (enabled) { audio.pause(); setEnabled(false); return; }
     setError(null);
     audio.play().then(() => setEnabled(true)).catch(() => { setEnabled(true); setAwaiting(true); });
-  }, [enabled, activeTrack]);
+  }, [activeTrack, audioRef, enabled]);
 
   const onEnded = useCallback(() => {
     const cur = activeTrack?.id;
@@ -174,7 +184,7 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
       return;
     }
     setTrackId(nid);
-  }, [tracks, activeTrack, enabled]);
+  }, [activeTrack, audioRef, enabled, tracks]);
 
   const onError = useCallback(() => {
     if (activeTrack?.id) failedRef.current.add(activeTrack.id);
@@ -182,13 +192,28 @@ function useDeck(allTracks: AudioTrack[], storageKey: string, autostart: boolean
     if (nid) { setTrackId(nid); setEnabled(true); } else { setEnabled(false); setError("Ses dosyaları açılamadı."); }
   }, [tracks, activeTrack]);
 
+  const jumpTo = useCallback((id: string) => {
+    setTrackId(id);
+    setEnabled(true);
+  }, []);
+
+  const pickMood = useCallback((mood: MusicMood, seed = "ritual") => {
+    const picked = pickTrackForMood(tracks.map((track) => track.file), mood, seed);
+    if (!picked) return;
+    const track = tracks.find((item) => item.file === picked || item.id === picked);
+    if (!track) return;
+    setTrackId(track.id);
+    setEnabled(true);
+  }, [tracks]);
+
   return {
-    tracks, activeTrack, enabled, volume, error, audioRef,
+    tracks, activeTrack, enabled, volume, error,
     toggle,
     next: () => goByOffset(1),
     prev: () => goByOffset(-1),
     setVolume: (v: number) => setVolume(clampVolume(v)),
-    jumpTo: (id: string) => { setTrackId(id); setEnabled(true); },
+    jumpTo,
+    pickMood,
     onEnded, onError,
   };
 }
@@ -262,10 +287,12 @@ function DeckControls({ deck, title, emoji }: { deck: Deck; title: string; emoji
 
 export function AudioPlayer() {
   const dockRef = useRef<HTMLElement>(null);
+  const songAudioRef = useRef<HTMLAudioElement | null>(null);
   const [tracks, setTracks] = useState<AudioTrack[]>(audioTracks);
   const [isPanelOpen, setIsPanelOpen] = useState(false);
 
-  const song = useDeck(tracks, "chillout_song_state_v1", true, 0.42);
+  const song = useDeck(tracks, "chillout_song_state_v1", true, 0.42, songAudioRef);
+  const pickSongMood = song.pickMood;
 
   useEffect(() => {
     let mounted = true;
@@ -281,6 +308,16 @@ export function AudioPlayer() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  useEffect(() => {
+    const onPick = (event: Event) => {
+      const detail = (event as CustomEvent<{ mood?: MusicMood; seed?: string }>).detail;
+      if (!detail?.mood) return;
+      pickSongMood(detail.mood, detail.seed);
+    };
+    window.addEventListener(RITUAL_PICK_TRACK_EVENT, onPick);
+    return () => window.removeEventListener(RITUAL_PICK_TRACK_EVENT, onPick);
+  }, [pickSongMood]);
 
   const summary = isPanelOpen ? (song.enabled ? "Şarkı" : "Duraklatıldı") : "Müzik";
 
@@ -303,7 +340,7 @@ export function AudioPlayer() {
         </article>
       )}
 
-      <audio ref={song.audioRef} preload="none" onEnded={song.onEnded} onError={song.onError} />
+      <audio ref={songAudioRef} preload="none" onEnded={song.onEnded} onError={song.onError} />
 
       <style jsx>{`
         .deck { display: grid; gap: 8px; }

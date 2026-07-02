@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Bell, BellOff, Settings2, SkipForward, Volume2, VolumeX } from "lucide-react";
 import { recordFocusSession } from "@/lib/focusStats";
+import { RITUAL_APPLY_POMODORO_EVENT } from "@/lib/ritualEvents";
 
 export type PomodoroPhase = "focus" | "short" | "long";
 
@@ -165,6 +166,21 @@ export function PomodoroTimer({ onPhaseChange, onChatWriteChange }: PomodoroTime
       }
     }, 0);
     return () => window.clearTimeout(hydrateTimer);
+  }, []);
+
+  useEffect(() => {
+    const onApplyPomodoro = (event: Event) => {
+      const detail = (event as CustomEvent<{ focusMin?: number }>).detail;
+      const focusMin = clampInt(detail?.focusMin ?? DEFAULT_SETTINGS.focusMin, 1, 120, DEFAULT_SETTINGS.focusMin);
+      setSettings((prev) => ({ ...prev, focusMin }));
+      setPhase("focus");
+      setCycleCount(0);
+      setSecondsLeft(focusMin * 60);
+      setHasStarted(true);
+      setIsRunning(true);
+    };
+    window.addEventListener(RITUAL_APPLY_POMODORO_EVENT, onApplyPomodoro);
+    return () => window.removeEventListener(RITUAL_APPLY_POMODORO_EVENT, onApplyPomodoro);
   }, []);
 
   // === Ayarları kaydet ===
