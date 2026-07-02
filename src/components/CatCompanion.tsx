@@ -7,7 +7,10 @@
 // Sanal bebek: açlık · enerji · eğlence · temizlik · sevgi ihtiyaçları zamanla azalır; bakım paneliyle karşılanır.
 // Tuş dostu: kedi TAMAMEN pointer-events:none — hiçbir tuşu bloklamaz; sevme window dinleyicisiyle,
 //            yalnızca altında etkileşimli öğe yoksa tetiklenir.
-// Kaynak: /public/cat/cat-{run-sprite,idle,happy-strip,crouch,jump,sleep,fall,fall-strip,angry,look-*,ear-flick,blink}.png
+// Animasyon: sanal-bebek eylemlerinin tümü Blender rig'inden kare kare render edilmiş şeritler —
+//            idle(12: nefes+kuyruk salınımı) · eat(6: kapta çiğneme) · sleep(8: loaf nefes) ·
+//            groom(8: pati yalama) · stretch(6: play-bow dizisi) · angry(6: kuyruk kamçısı) · happy(8) · fall(3).
+// Kaynak: /public/cat/cat-{run-sprite,happy-strip,idle-strip,eat-strip,sleep-strip,groom-strip,stretch-strip,angry-strip,fall-strip,crouch,jump,look-*,ear-flick,blink}.png
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CAT_REACTION_EVENT, type CatReactionDetail } from "@/lib/catEvents";
@@ -525,7 +528,7 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
               }
             }
             if (roll < 0.55) { c.mode = "groom"; c.state = "groom"; c.actionUntil = t + rnd(2600, 4400); break; }
-            if (roll < 0.66) { c.mode = "stretch"; c.state = "stretch"; c.actionUntil = t + 1400; break; }
+            if (roll < 0.66) { c.mode = "stretch"; c.state = "stretch"; c.actionUntil = t + 2600; break; }
             if (roll < 0.78) { c.mode = "loaf"; c.state = "sleep"; c.actionUntil = t + rnd(5000, 9000); break; }
             if (roll < (playful ? 0.90 : 0.86)) {
               c.zoomLeft = 2 + Math.floor(Math.random() * 2); c.targetX = pickStrollX();
@@ -590,7 +593,12 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
               setBowlX(null);
               const line = "Nefis! 😋 mırr~";
               setBubble(line); window.setTimeout(() => setBubble((b) => (b === line ? null : b)), 1800);
-              goDwell(2500, 4500);
+              // gerçek kedi: yemekten sonra çoğunlukla yalanır
+              if (Math.random() < 0.45) {
+                c.mode = "groom"; c.state = "groom"; c.actionUntil = t + rnd(2400, 3600);
+              } else {
+                goDwell(2500, 4500);
+              }
             }
             break;
           }
@@ -783,7 +791,8 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
         }}
       >
         <div className="cat3d-flip" style={{ transform: `scaleX(${dir === "left" ? -1 : 1})` }}>
-          <div className={`cat3d-sprite is-${state}`} />
+          {/* stroll/enter/gofood: sakin tempolu yürüyüş — koşu döngüsü yavaş oynar, pati kayması azalır */}
+          <div className={`cat3d-sprite is-${state}${state === "run" && (mode === "stroll" || mode === "enter" || mode === "gofood") ? " run-slow" : ""}`} />
           {state === "idle" && (
             <div className="cat3d-mimic" style={{ backgroundImage: mimic ? `url("/cat/cat-${mimic}.png")` : "none", opacity: mimic ? 1 : 0 }} />
           )}
@@ -857,13 +866,63 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
           background-size: ${sheetW}px ${sheetH}px;
           animation: cat3d-col ${COLS / FPS}s steps(${COLS}) infinite, cat3d-row ${(COLS * ROWS) / FPS}s steps(${ROWS}) infinite;
         }
-        .cat3d-sprite.is-idle { background-image: url("/cat/cat-idle.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-breathe 2.7s ease-in-out infinite alternate; }
-        .cat3d-sprite.is-groom { background-image: url("/cat/cat-groom.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-groom 0.9s ease-in-out infinite; }
-        .cat3d-sprite.is-stretch { background-image: url("/cat/cat-stretch.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-bigstretch 1.4s ease-in-out; }
+        /* sakin yürüyüş: aynı koşu döngüsü, %55 daha yavaş — stroll hızıyla uyumlu */
+        .cat3d-sprite.is-run.run-slow {
+          animation-duration: ${((COLS / FPS) * 1.55).toFixed(3)}s, ${(((COLS * ROWS) / FPS) * 1.55).toFixed(3)}s;
+        }
+
+        /* ── IDLE — Blender 12 kare: nefes + kuyruk salınımı + kulak mikro (kare 0 ≈ rest, mimikle uyumlu) ── */
+        .cat3d-sprite.is-idle {
+          background-image: url("/cat/cat-idle-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 12}px ${H}px;
+          background-position-x: 0;
+          animation: cat3d-idleloop 4.2s steps(12) infinite;
+        }
+        @keyframes cat3d-idleloop { from { background-position-x: 0; } to { background-position-x: -${W * 12}px; } }
+
+        /* ── GROOM — Blender 8 kare pati yalama döngüsü ── */
+        .cat3d-sprite.is-groom {
+          background-image: url("/cat/cat-groom-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 8}px ${H}px;
+          background-position-x: 0;
+          animation: cat3d-groomloop 1.1s steps(8) infinite;
+        }
+        @keyframes cat3d-groomloop { from { background-position-x: 0; } to { background-position-x: -${W * 8}px; } }
+
+        /* ── STRETCH — Blender 6 kare play-bow dizisi; son karede tutar (forwards) ── */
+        .cat3d-sprite.is-stretch {
+          background-image: url("/cat/cat-stretch-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 6}px ${H}px;
+          background-position-x: 0;
+          animation: cat3d-stretchseq 1.15s steps(5) 1 forwards;
+        }
+        @keyframes cat3d-stretchseq { from { background-position-x: 0; } to { background-position-x: -${W * 5}px; } }
+
         .cat3d-sprite.is-crouch { background-image: url("/cat/cat-crouch.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-compress 0.18s ease-out forwards; }
         .cat3d-sprite.is-jump { background-image: url("/cat/cat-jump.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-stretch 0.22s ease-out forwards; }
-        .cat3d-sprite.is-sleep { background-image: url("/cat/cat-sleep.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-sleepdrift 5s ease-in-out infinite alternate; }
-        .cat3d-sprite.is-eat { background-image: url("/cat/cat-look-down.png"); background-size: 100% 100%; transform-origin: bottom center; animation: cat3d-eat 0.7s ease-in-out infinite; }
+
+        /* ── SLEEP — Blender 8 kare loaf + yavaş nefes döngüsü ── */
+        .cat3d-sprite.is-sleep {
+          background-image: url("/cat/cat-sleep-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 8}px ${H}px;
+          background-position-x: 0;
+          animation: cat3d-sleeploop 4.8s steps(8) infinite;
+        }
+        @keyframes cat3d-sleeploop { from { background-position-x: 0; } to { background-position-x: -${W * 8}px; } }
+
+        /* ── EAT — Blender 6 kare kapta çiğneme döngüsü ── */
+        .cat3d-sprite.is-eat {
+          background-image: url("/cat/cat-eat-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 6}px ${H}px;
+          background-position-x: 0;
+          animation: cat3d-eatloop 0.9s steps(6) infinite;
+        }
+        @keyframes cat3d-eatloop { from { background-position-x: 0; } to { background-position-x: -${W * 6}px; } }
 
         /* ── KANAT AÇIK DÜŞÜŞ — Blender unfurl strip (3 kare), süzülür ── */
         .cat3d-sprite.is-fall {
@@ -877,11 +936,16 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
         @keyframes cat3d-unfurl { from { background-position-x: 0; } to { background-position-x: -${W * 2}px; } }
         @keyframes cat3d-glide { from { transform: rotate(-4deg) translateY(0); } to { transform: rotate(3deg) translateY(-2px); } }
 
-        /* ── ÖFKE — Blender arched hiss pozu, titrer ── */
+        /* ── ÖFKE — Blender 6 kare: kambur hışş + kuyruk kamçısı, üstüne titreme katmanı ── */
         .cat3d-sprite.is-angry {
-          background-image: url("/cat/cat-angry.png"); background-size: 100% 100%;
-          transform-origin: bottom center; animation: cat3d-angry 0.14s ease-in-out infinite;
+          background-image: url("/cat/cat-angry-strip.png");
+          background-repeat: no-repeat;
+          background-size: ${W * 6}px ${H}px;
+          background-position-x: 0;
+          transform-origin: bottom center;
+          animation: cat3d-angryloop 0.55s steps(6) infinite, cat3d-angry 0.14s ease-in-out infinite;
         }
+        @keyframes cat3d-angryloop { from { background-position-x: 0; } to { background-position-x: -${W * 6}px; } }
         @keyframes cat3d-angry {
           0%,100% { transform: translateX(0) rotate(0deg); }
           25% { transform: translateX(-2px) rotate(-1.5deg); }
@@ -904,13 +968,8 @@ export function CatCompanion({ activeTab }: { activeTab?: string }) {
         @keyframes cat3d-col { to { background-position-x: -${sheetW}px; } }
         @keyframes cat3d-row { to { background-position-y: -${sheetH}px; } }
         @keyframes cat3d-breathe { from { transform: translateY(0) scaleY(1); } to { transform: translateY(-1px) scaleY(1.035); } }
-        @keyframes cat3d-groom { 0%,100% { transform: translateY(0) rotate(0deg); } 30% { transform: translateY(1px) rotate(-2.5deg); } 60% { transform: translateY(0) rotate(2.5deg); } }
-        @keyframes cat3d-bigstretch { 0% { transform: scaleX(1) scaleY(1); } 40% { transform: scaleX(1.05) scaleY(0.97) translateX(2px); } 70% { transform: scaleX(1.05) scaleY(0.97) translateX(2px); } 100% { transform: scaleX(1) scaleY(1); } }
-        @keyframes cat3d-sleepdrift { from { transform: translateY(0) scaleY(1) scaleX(1); } to { transform: translateY(-1px) scaleY(1.025) scaleX(1.01); } }
-        @keyframes cat3d-eat { 0%,100% { transform: translateY(0); } 50% { transform: translateY(3px) scaleY(0.98); } }
         @keyframes cat3d-compress { from { transform: scaleY(1); } to { transform: scaleY(0.88) translateY(3px); } }
         @keyframes cat3d-stretch { from { transform: scaleX(1) scaleY(1); } to { transform: scaleX(1.06) scaleY(0.96); } }
-        @keyframes cat3d-wiggle { 0%,100% { transform: rotate(0deg); } 25% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
 
         .cat3d-bubble {
           position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); margin-bottom: 7px;
